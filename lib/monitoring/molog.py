@@ -76,7 +76,7 @@ class connector():
 
 		#For each warning record check if we can ignore it
 		for record in querydb.fetchall():
-			if self.ignore_record(type='warning',host=record[1],data=record[2].record[3]) == True:
+			if self.ignore_record(type='warning',host=record[1],data=record[2]+record[3]) == True:
 				next
 			else:
 				change=True
@@ -90,7 +90,7 @@ class connector():
 
 		#For each critical record check if we can ignore it
 		for record in querydb.fetchall():
-			if self.ignore_record(type='critical',host=record[1],data=record[2].record[3]) == True:
+			if self.ignore_record(type='critical',host=record[1],data=record[2]+record[3]) == True:
 				next
 			else:
 				change=True
