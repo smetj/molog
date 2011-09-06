@@ -344,7 +344,6 @@ class WebServer(threading.Thread):
 			self.logging.put(['Error','Webserver failed to start. Reason: %s'%(error)])
 		while self.block() == True:
 			time.sleep(1)
-		cherrypy.engine.exit()
 		self.logging.put(['Normal','Webserver thread has ended'])
 class Server():
 	def __init__(self,configfile=None):
@@ -473,11 +472,10 @@ class Server():
 			while self.block()==True:
 				time.sleep(0.1)
 		except KeyboardInterrupt:
-			log_generator.queue.queue.put(['Normal','Stopping all queues in a polite way. Press ctrl+c (or sigint) again to force stop.'])
+			log_generator.queue.put(['Normal','Stopping all queues in a polite way. Press ctrl+c (or sigint) again to force stop.'])
 			try:
-				while server.stop_all([server.threads]) == False:
-					time.sleep(1)
-					log_generator.queue.queue.put(['Normal','Waiting for all threads to end.'])
+				self.block=False
+				cherrypy.engine.exit()
 				os.remove(self.config['application']['pidfile'])
 				exit
 			except KeyboardInterrupt:
