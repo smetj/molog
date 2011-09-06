@@ -1,0 +1,163 @@
+<!--
+        host_results.tmpl
+        
+        Copyright 2009 Jelle Smet web@smetj.net
+-->
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+
+<head>	
+	<title>untitled</title>
+	<meta http-equiv="content-type" content="text/html;charset=utf-8" />
+<STYLE TYPE="text/css">
+<!--
+TD{font-family: Verdana; font-size: 10pt;}
+--->
+</STYLE>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+
+<!-- Begin
+function Toggle(chk)
+{
+for (i = 0; i <= chk.length; i++)
+{
+if ( chk[i].checked == false )
+	{
+	chk[i].checked = true ;
+	}
+else
+	{
+	chk[i].checked = false ;
+	}
+}
+}
+
+// End -->
+</script>
+<STYLE TYPE="text/css">
+<!--
+title1
+   {
+   color:white;
+   font-size:14pt;
+   font-family:Verdana;
+   font-weight:bold;
+   }
+title2
+   {
+   color:white;
+   font-size:8pt;
+   font-family:Verdana;
+   font-weight:bold;
+   }
+title3
+   {
+   color:black;
+   font-size:14pt;
+   font-size:14pt;
+   font-family:Verdana;
+   }
+
+text
+   {
+   color:black;
+   font-size:8pt;
+   font-family:Verdana;
+   }
+-->
+</STYLE> 
+
+</head>
+
+<body link="black" vlink="black" alink="black">
+<table width="100%" bgcolor="black">
+	<tr rowspan=2 valign="middle">
+		<td width="30%"><A href="/"><title2>Index</title2></A><a href="javascript:window.location.reload(history.go(-2));">Back<a></td><td align="center" width="40%"><title1>MoLog</title1></td><td width="30%" align="right"></td>
+	</tr>
+	<tr>
+	</tr>
+</table>
+<form name="myForm" action="/clear" method="post">
+<INPUT TYPE=HIDDEN NAME="hostname" value="$hostname">
+<center>
+<table width=100%>
+	<tr>
+		<td width="90%"><title3>$hostname.</title3></td><td width="10%" align=right><input type="submit" value="Submit"><input type="checkbox" name="reset">reset</td>
+	</tr>	
+</table>
+</center>
+
+
+
+<center>
+<TABLE BORDER=0 RULES=ROWS FRAME=BOX CELLSPACING=2 WIDTH=100%>
+	<tr >
+		<td bgcolor="#BCBBBB" colspan=5>$numbers['warnings'] warning alerts.</td>
+	</tr>
+	<tr BGcolor="yellow">
+		<td width="10">Clear</td><td width="250" align="center">Time</td><td>Message</td>
+	</tr>
+	#set $pair=0
+	
+	#set $message_list=$messages.keys()
+	#silent $message_list.reverse()
+	
+	#for $message in $message_list
+		#if $messages[$message]['type']=='warning'
+			#if $pair==0
+				#set $pair=1
+				<tr bgcolor="#E5E5E5">
+			#else
+				#set $pair=0
+				<tr bgcolor="#D0CECE">
+			#end if
+				<td><input type="checkbox" name="warnings" value=$message></td>
+				<td align="center"><text>$messages[$message]['receivedat']</text></td>
+				<td align="left"><text>$messages[$message]['syslogtag'] $messages[$message]['message']</text></td>
+				</tr>
+		#end if
+	#end for
+	<tr>
+		<td><input type="button" name="Check_All2" value="Toggle" onClick="Toggle(document.myForm.warnings)"></td>
+	</tr>
+</table>
+
+<TABLE BORDER=0 RULES=ROWS FRAME=BOX CELLSPACING=2 WIDTH=100%>
+	<tr >
+		<td bgcolor="#BCBBBB" colspan=5>$numbers['criticals'] critical alerts.</td>
+	</tr>
+	<tr BGcolor="red">
+		<td width="10">Clear</td><td width="250" align="center">Time</td><td>Message</td>
+	</tr>
+	#set $pair=0
+	
+	#set $message_list=$messages.keys()
+	#silent $message_list.reverse()
+	
+	#for $message in $message_list
+		#if $messages[$message]['type']=='critical'
+			#if $pair==0
+				#set $pair=1
+				<tr bgcolor="#E5E5E5">
+			#else
+				#set $pair=0
+				<tr bgcolor="#D0CECE">
+			#end if
+				<td><input type="checkbox" name="criticals" value=$message></td>
+				<td align="center"><text>$messages[$message]['receivedat']</text></td>
+				<td align="left"><text>$messages[$message]['syslogtag'] $messages[$message]['message']</text></td>
+				</tr>
+		#end if
+	#end for
+	<tr>
+		<td><input type="button" name="Check_All2" value="Toggle" onClick="Toggle(document.myForm.criticals)"></td>
+	</tr>
+</table>
+</center>
+
+</form>
+</body>
+</html>

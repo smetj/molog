@@ -1,0 +1,573 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+#
+#       molog.py
+#       
+#       Copyright 2010 Jelle Smet <web@smetj.net>
+#       
+#       This file is part of MoLog.
+#       
+#           MoLog is free software: you can redistribute it and/or modify
+#           it under the terms of the GNU General Public License as published by
+#           the Free Software Foundation, either version 3 of the License, or
+#           (at your option) any later version.
+#       
+#           MoLog is distributed in the hope that it will be useful,
+#           but WITHOUT ANY WARRANTY; without even the implied warranty of
+#           MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#           GNU General Public License for more details.
+#       
+#           You should have received a copy of the GNU General Public License
+#           along with MoLog.  If not, see <http://www.gnu.org/licenses/>.
+__version__ = "$0.1.19$"
+
+import cherrypy, os, sys, time, signal, hashlib, string, Queue,random, threading, syslog, daemon, re
+from configobj import ConfigObj
+from optparse import OptionParser
+from Cheetah.Template import Template
+from time import gmtime
+
+projecturl="http://www.smetj.net/wiki/molog"
+
+class HtmlContent:
+	def __init__(self,authentication=None,templatedir=None,database=None,queue=None,service=None,urlize=False,logging=None):
+		from monitoring.logic 			import nagios_logic
+		from monitoring.communication	import Lookup
+		from monitoring.molog 			import connector
+		self.authentication=authentication
+		self.templatedir=templatedir
+		self.molog=database
+		self.queue=queue
+		self.service=service
+		self.authentication=authentication
+		self.urlize=urlize
+		self.logging=logging
+		try:
+			self.host_results_html=Template(file=templatedir+'/host_results.tmpl')
+			self.index_results_html=Template(file=templatedir+'/index.tmpl')
+			self.login_html=Template(file=templatedir+'/login.tmpl')
+			self.regex_html=Template(file=templatedir+'/regex.tmpl')
+		except Exception as error:
+			self.logging.put(['Error','Error loading the html templates. Reason: %s'%(error)])
+		self.nagios_logic=nagios_logic()
+		self.lookup=Lookup()
+	def login(self,*args,**form):
+		self.login_html.redirect='/'
+		if len(args) == 2 and args[0] == "hostname" and args[1] != None:
+			self.login_html.redirect="/hostname/"+args[1]
+		if form.has_key('username') and form.has_key('password'):
+			if self.authentication.do(form.get('username',None),form.get('password',None)):
+				cherrypy.session['username'] = form.get('username',None)
+				raise cherrypy.HTTPRedirect(self.login_html.redirect)
+			else:
+				raise cherrypy.HTTPRedirect("/login/")
+		else:
+			return str(self.login_html)
+	login.exposed = True
+	def index(self,*args,**form):
+		if cherrypy.session.has_key( 'username' ):
+			self.index_results_html.qsize=self.queue.qsize()
+			self.index_results_html.db_size=self.molog.size()
+			self.index_results_html.index=self.molog.index()
+			return (str(self.index_results_html))
+		else:
+			raise cherrypy.HTTPRedirect("/login/")
+	index.exposed = True
+	def hostname(self,hostname=None,*args,**form):
+		if cherrypy.session.has_key( 'username' ):
+			self.host_results_html.hostname=hostname
+			self.host_results_html.messages=self.molog.get_messages(host=hostname)
+			self.host_results_html.numbers=self.molog.get_numbers(host=hostname)
+			return (str(self.host_results_html))
+		else:
+			raise cherrypy.HTTPRedirect("/login/hostname/"+hostname)
+	hostname.exposed = True
+	def regex(self,hostname=None,*args,**form):
+		if cherrypy.session.has_key( 'username' ):
+			self.regex_html=Template(file=self.templatedir+'/regex.tmpl')
+			self.regex_html.hostname=hostname
+			self.regex_html.regexes=self.molog.get_regex(host=hostname)
+			return (str(self.regex_html))
+		else:
+			raise cherrypy.HTTPRedirect("/login/hostname/"+hostname)
+	regex.exposed = True	
+	def clear(self,*args,**form):
+		if cherrypy.session.has_key( 'username' ):
+			try:
+				if form.has_key("reset") and form['reset'] == 'on':
+					package={	'type'			: 'service',
+							'hostname'		: self.lookup.reverse(ip=form['hostname']),
+							'servicename'		: self.service,
+							'global_exit_code'	: '0',
+							'message'		: "Ok : 0 warning and 0 critical messages.",
+							'plugin_verbose_output'	: "",
+							'perfdata'		: "'warning'=0;;;; 'critical'=0;;;;"
+							}
+					self.molog.mark_records_deleted(host=form['hostname'])
+					if self.urlize != False:
+						package["message"]='<a href="%s/hostname/%s">%s</a>'%(self.urlize,form['hostname'],package["message"])
+						self.queue.put(package)
+					raise cherrypy.HTTPRedirect("/hostname/"+form['hostname'])
+				elif form.has_key("warnings") or form.has_key("criticals"):					
+					if form.has_key("warnings"):
+							self.molog.mark_record_deleted(records=form['warnings'])
+					if form.has_key("criticals"):
+							self.molog.mark_record_deleted(records=form['criticals'])
+					numbers=self.molog.get_numbers(host=form['hostname'])
+					package={	'type'			: 'service',
+							'hostname'		: self.lookup.reverse(ip=form['hostname']),
+							'servicename'		: self.service,
+							'global_exit_code'	: self.nagios_logic.number_based_state(warnings=numbers['warnings'],criticals=numbers['criticals']),
+							'message'		: "%s : %s warning and %s critical messages."%(self.nagios_logic.number_based_state(numeric=False,warnings=numbers['warnings'],criticals=numbers['criticals']),numbers['warnings'],numbers['criticals']),
+							'plugin_verbose_output'	: "",
+							'perfdata'		: "'warning'=%s;;;; 'critical'=%s;;;;"%(numbers['warnings'],numbers['criticals'])
+							}
+					if self.urlize != False:
+						package["message"]='<a href="%s/hostname/%s">%s</a>'%(self.urlize,form['hostname'],package["message"])
+						self.queue.put(package)
+					raise cherrypy.HTTPRedirect("/hostname/"+form['hostname'])
+				elif form.has_key("hosts"):
+					host_list=[]
+					if len(form['hosts']) == 1:
+						host_list.append(form['hosts'])
+					else:
+						host_list = form['hosts']
+					
+					for host in host_list:
+						package={	'type'			: 'service',
+								'hostname'		: host,
+								'servicename'		: self.service,
+								'global_exit_code'	: '0',
+								'message'		: "Ok : 0 warning and 0 critical messages.",
+								'plugin_verbose_output'	: "",
+								'perfdata'		: "'warning'=0;;;; 'critical'=0;;;;"
+								}
+						self.molog.mark_records_deleted(host=host)
+						if self.urlize != False:
+							package["message"]='<a href="%s/hostname/%s">%s</a>'%(self.urlize,host,package["message"])
+							self.queue.put(package)
+					raise cherrypy.HTTPRedirect("/")
+			except:
+				raise cherrypy.HTTPRedirect("/")
+		else:
+			raise cherrypy.HTTPRedirect("/login/")
+	clear.exposed = True
+	def edit(self,*args,**form):
+		redirect ='/'
+		if cherrypy.session.has_key( 'username' ):
+			try:
+				if form.has_key("command") and form.has_key("hostname"):
+					if  form['command'] == 'del_regexes':
+						#Delete all regexes of 1 host
+						self.molog.del_regexes(host=form["hostname"])
+						raise cherrypy.InternalRedirect("/")
+					if form['command'] == 'submit':
+						for item in form:
+							m = re.match('^delete:(.*)',item)
+							if m != None:
+								self.molog.del_regex(id=m.group(1))
+								continue
+							m = re.match('^regex:(.*)',item)
+							if m != None:
+								self.molog.update_regex(id=m.group(1),regex=form['regex:'+m.group(1)],warning=form.has_key('warning:'+m.group(1)),critical=form.has_key('critical:'+m.group(1)))							
+						if form.has_key('new:regex') and form['new:regex'] != '':
+							self.molog.add_regex(host=form['hostname'],regex=form['new:regex'],warning=form.has_key('new:warning'),critical=form.has_key('new:critical'))
+						raise cherrypy.InternalRedirect( str('/regex/%s'%(form['hostname'])) )
+				else:
+					self.logging.put(["ERROR","Command or hostname form field missing."])
+					raise cherrypy.InternalRedirect("/")
+			except Exception as error:
+				raise cherrypy.InternalRedirect("/")
+			else:
+				raise cherrypy.InternalRedirect(redirect)
+		else:
+			self.logging.put(["WARNING","User not authenticated."])
+			raise cherrypy.InternalRedirect("/login/")		
+	edit.exposed = True
+	def default(self, *args, **kwargs):
+		pass
+	default.exposed = True
+class MonitorQueue(threading.Thread):
+	def __init__(self,input_queue,outgoing_callback,type,locations,username,password,token,batchsize,logging=None,blockcallback=None):
+		from monitoring.format_message 	import construct_bulk2
+		threading.Thread.__init__(self)
+		self.input_queue=input_queue
+		self.outgoing_callback=outgoing_callback
+		self.type=type
+		self.locations=locations
+		self.username=username
+		self.password=password
+		self.token=token
+		self.batchsize=batchsize
+		self.block=blockcallback
+		self.logging=logging
+		
+		#Initialize object which shapes the dataformat required by remote listener
+		self.construct_bulk=construct_bulk2()	
+		self.daemon=True
+		self.start()
+	def run(self):
+		self.logging.put(['Normal','Queue monitor started.'])
+		try:
+			while self.block() == True:
+				bulk=[]
+				while not self.input_queue.empty() and len(bulk) <= self.batchsize:
+					bulk.append(self.input_queue.get())
+				if bulk != []:
+					external_command=self.construct_bulk.do(data=bulk,type='nagios')
+					self.outgoing_callback({'destination':{
+									"type":self.type,
+									"locations":self.locations,
+									"username":self.username,
+									"password":self.password,
+									"token":self.token},
+								'requestUUID':None,
+								'data':external_command})
+				time.sleep(0.5)
+			self.logging.put(['Normal','Queue monitor ended.'])
+		except Exception as error:
+			self.logging.put(['Error','Queue monitor thread failed to start. Reason: %s'%(error)])
+class QueryMolog(threading.Thread):
+	def __init__(self,queue=None,urlize=None,service=None,database=None,logging=None,blockcallback=None):
+		from monitoring.logic 			import nagios_logic
+		from monitoring.communication	import Lookup
+		from monitoring.molog 			import connector
+		threading.Thread.__init__(self)
+		self.queue=queue
+		self.urlize=urlize
+		self.service=service
+		self.logging=logging
+		self.block=blockcallback
+		self.nagios_logic=nagios_logic()
+		self.lookup=Lookup()
+		self.molog=database
+		self.daemon=True
+		self.start()
+	def run(self):
+		self.logging.put(['Normal','Molog query instance started.'])
+		try:
+			while self.block()==True:
+				if self.molog.update() == True:
+					for host in self.molog.new_results():
+						numbers=self.molog.get_numbers(host=host)
+						package={	'type'				: 'service',
+									'hostname'		: self.lookup.reverse(ip=host),
+									'servicename'		: self.service,
+									'global_exit_code'	: self.nagios_logic.number_based_state(warnings=numbers['warnings'],criticals=numbers['criticals']),
+									'message'		: "%s : %s warning and %s critical messages."%(self.nagios_logic.number_based_state(numeric=False,warnings=numbers['warnings'],criticals=numbers['criticals']),numbers['warnings'],numbers['criticals']),
+									'plugin_verbose_output'	: "",
+									'perfdata'		: "'warning'=%s;;;; 'critical'=%s;;;;"%(numbers['warnings'],numbers['criticals'])
+									}
+						if self.urlize != False:
+							package["message"]='<a href="%s/hostname/%s">%s</a>'%(self.urlize,host,package["message"])
+						self.queue.put(package)
+				time.sleep(1)
+		except Exception as error:
+			self.logging.put(['Error','Error querying the database. Reason: %s'%(error)])
+class DatabaseMaintenance(threading.Thread):
+	'''Performs scheduled database maintenance tasks'''
+	def __init__(self,host=None,user=None,password=None,interval=None,logging=None,blockcallback=None):
+		from monitoring.molog import connector
+		threading.Thread.__init__(self)
+		self.interval=interval
+		self.logging=logging
+		self.loop=blockcallback
+		try:
+			self.molog = connector	(	host=host,
+										user=user,
+										passwd=password)
+		except Exception as error:
+			self.logging.put(['Error','Servepage instance failed to start. Reason: %s'%(error)])
+		self.daemon=True
+		self.start()
+	def run(self):
+		self.logging.put(['Normal','DB maintenance thread started.'])
+		while self.loop.block() == True:
+			try:
+				number=self.molog.maintenance()
+				self.logging.put(['Normal','DB maintenance purged %s reference records our of MoLog.'%(number)])
+				time.sleep(int(self.interval))
+			except Exception as error:
+				self.logging.put(['Error','DB maintenance thread ended. Reason: %s'%(error)])
+		self.logging.put(['Normal','DB maintenance thread ended.'])
+class WebServer(threading.Thread):
+	def __init__(self,host,port,timeout,access_file,error_file,ssl='off',ssl_certificate=None,ssl_private_key=None,htmlcontent=None,logging=None,blockcallback=False):
+		threading.Thread.__init__(self)
+		self.host=host
+		self.port=port
+		self.timeout=timeout
+		self.access_file=access_file
+		self.error_file=error_file
+		self.ssl=ssl
+		self.ssl_certificate=ssl_certificate
+		self.ssl_private_key=ssl_private_key
+		self.htmlcontent=htmlcontent
+		self.logging=logging
+		self.block=blockcallback
+		self.daemon=True
+		self.start()
+	def run(self):
+		config={'global': {'server.socket_host': self.host}}
+	
+		cherrypy.config.update(	
+								{ 
+								'global': 
+									{
+#									'server.max_request_body_size': int(globals.configfile['settings']['max_dump_size']),
+									'server.socket_port': self.port,
+									'server.socket_host': self.host,
+									'tools.sessions.timeout': self.timeout,
+									'tools.sessions.on': True,
+									'log.access_file': self.access_file,
+									'log.error_file': self.error_file
+									}
+								}
+								)
+						
+		#check if we need to run over https or not
+		if self.ssl == "on":
+			cherrypy.config.update(
+									{
+									'global':
+										{
+										'server.ssl_certificate': self.ssl_certificate,
+										'server.ssl_private_key': self.ssl_private_key
+										}
+									}
+								  )	
+		cherrypy.config.update({'global':{'log.screen': False}})
+		cherrypy.tree.mount(self.htmlcontent,'/',config=config)
+		try:
+			cherrypy.engine.start()
+			self.logging.put(['Normal','Webserver started on %s port %s'%(self.host,self.port)])
+		except Exception as error:
+			self.logging.put(['Error','Webserver failed to start. Reason: %s'%(error)])
+		while self.block() == True:
+			time.sleep(1)
+		cherrypy.engine.exit()
+		self.logging.put(['Normal','Webserver thread has ended'])
+class Server():
+	def __init__(self,configfile=None):
+		self.configfile=configfile
+		self.thread_block=True
+		try:
+			self.config=ConfigObj(self.configfile)			
+		except Exception as err:
+			sys.stderr.write('There appears to be an error in your configfile:\n')
+			sys.stderr.write('\t'+ str(type(err))+" "+str(err) + "\n" )
+			os.kill(os.getpid(),signal.SIGKILL)
+	def block(self):
+		return self.thread_block
+	def check_running(self):
+		if (os.path.exists(self.config['application']['pidfile'])):
+			sys.stderr.write('There is already a version of MoLog running, if not delete the pidfile located at: %s\n'%(self.config['application']['pidfile']))
+			sys.exit(1)
+	def start(self):
+		#Create pid
+		pidfile=open(self.config["application"]["pidfile"],'w')
+		pidfile.write(str(os.getpid()))
+		pidfile.close()
+			
+		#Extend the search path with library directory.
+		sys.path.append(self.config['application']['libs'])
+		from monitoring.molog import connector
+		
+		#Create queues
+		input_queue=Queue.Queue(0)
+		
+		#Start a LogGenerator thread
+		from monitoring.server import LogGenerator
+		log_generator = LogGenerator(	destination=self.config['application'].get('serverlogfile','molog.log'),
+						blockcallback=self.block)
+		
+		#Start a ConfigFileMonitor thread
+		from monitoring.server import ConfigFileMonitor
+		configfile_monitor = ConfigFileMonitor(	file=self.configfile,
+							logging=log_generator.queue,
+							blockcallback=self.block)
+
+		#Create a SubmitListener object
+		from monitoring.communication import SubmitListener
+		submit_listener = SubmitListener(	logging=log_generator.queue,
+							blockcallback=self.block
+							)
+	
+		#Create MoLogDB objects
+		try:
+			from monitoring.molog import connector
+			dbConnection1 = connector(	host=self.config['database']['server'],
+							user=self.config['database']['username'],
+							passwd=self.config['database']['password'],
+							rsyslogdb=self.config['database']['rsyslogdb'],
+							mologdb=self.config['database']['mologdb'],
+							checkpoint_file=self.config['application']['checkpointfile'],
+							logging=log_generator.queue
+							)
+									
+			dbConnection2 = connector(	host=self.config['database']['server'],
+							user=self.config['database']['username'],
+							passwd=self.config['database']['password'],
+							rsyslogdb=self.config['database']['rsyslogdb'],
+							mologdb=self.config['database']['mologdb'],
+							checkpoint_file=self.config['application']['checkpointfile'],
+							logging=log_generator.queue
+							)
+		except Exception as error:
+			log_generator.queue.put(['Error','I could not initiate a DB connection. Reason: %s'%(error)])
+			sys.exit(1)
+
+		#Initiate an authentication method
+		from monitoring.authentication import Authenticate
+		auth = Authenticate	(	database=self.config['authentication'],
+						auth_type='default',
+						logging=log_generator.queue
+						)
+
+		#Create HtmlContent Object
+		html_content = HtmlContent(	authentication = auth,
+						templatedir = self.config['application']['templates'],
+						database = dbConnection1,
+						queue = input_queue,
+						service = self.config['settings']['monitoring_service'],
+						urlize = self.config['settings'].get('urlize_address',False),
+						logging = log_generator.queue)
+
+		#Start the webserver thread
+		web_server = WebServer	(	host = self.config['application']['host'],
+						port = int(self.config['application']['port']),
+						timeout = int(self.config['application']['sessiontimeout']),
+						access_file = self.config['application']['accesslogfile'],
+						error_file = self.config['application']['errorlogfile'],
+						ssl = self.config['application']['sslengine'],
+						ssl_certificate = self.config['application']['sslcertificate'],
+						ssl_private_key = self.config['application']['sslprivatekey'],
+						htmlcontent = html_content,
+						logging=log_generator.queue,
+						blockcallback = self.block
+						)
+		
+		#Start the monitorqueue thread
+		monitor_queue = MonitorQueue(	input_queue = input_queue,
+						outgoing_callback = submit_listener.dump,
+						type = self.config['submit']['type'],
+						locations = self.config['submit']['locations'].split(','),
+						username = self.config['submit']['username'],
+						password = self.config['submit']['password'],
+						token = self.config['submit'].get('token','changeme'),
+						batchsize = self.config['submit']['size'],
+						logging=log_generator.queue,
+						blockcallback = self.block
+						)
+
+		#Start the querymolog thread
+		query_molog = QueryMolog	(	queue = input_queue,
+							urlize = self.config['settings'].get('urlize_address',False),
+							service = self.config['settings']['monitoring_service'],
+							database = dbConnection2,
+							logging = log_generator.queue,
+							blockcallback = self.block
+							)
+
+		#Block here		
+		try:
+			while self.block()==True:
+				time.sleep(0.1)
+		except KeyboardInterrupt:
+			log_generator.queue.queue.put(['Normal','Stopping all queues in a polite way. Press ctrl+c (or sigint) again to force stop.'])
+			try:
+				while server.stop_all([server.threads]) == False:
+					time.sleep(1)
+					log_generator.queue.queue.put(['Normal','Waiting for all threads to end.'])
+				os.remove(self.config['application']['pidfile'])
+				exit
+			except KeyboardInterrupt:
+				os.remove(self.config['application']['pidfile'])
+				exit
+	def stop(self):
+		try:
+			pidfile=open(self.config["application"]["pidfile"],'r')
+			pid=pidfile.read()
+			pidfile.close()
+			os.kill(int(pid),signal.SIGINT)
+		except Exception as error:
+			sys.stderr.write('Could not stop MoLog.  Reason: %s\n'%error)
+	def kill(self):
+		try:
+			pidfile=open(self.config["application"]["pidfile"],'r')
+			pid=pidfile.read()
+			pidfile.close()
+			os.remove(self.config["application"]["pidfile"])
+			os.kill(int(pid),signal.SIGKILL)
+		except Exception as error:
+			sys.stderr.write('Could not kill MoLog.  Reason: %s\n'%error)
+class Help:
+	def __init__(self):
+		pass
+	def usage(self):
+		print ("molog %s Copyright 2009,2010,2011 by Jelle Smet <jelle@smetj.net>" %(__version__))
+		print ('''Usage: molog command [--config configfile] 
+	
+	Valid commands: 
+	
+		start	Starts the MoLog daemon in the background.
+					
+		stop	Gracefully stops the MoLog daemon running in the background.
+
+		kill	Kills the MoLog daemon running with the pid defined in your config file.
+			
+		debug	Starts the MoLog daemon in the foreground while showing real time log and debug messages.
+			The process can be stopped with ctrl+c which will ends MoLog gracefully.
+			A second ctrl+c will kill MoLog.
+				
+	Parameters: 
+		--config	Defines the location of the config file to use.  The parameter is obligatory.  
+				-c can also be used.
+								
+MoLog is distributed under the Terms of the GNU General Public License Version 3. (http://www.gnu.org/licenses/gpl-3.0.html)
+
+For more information please visit http://www.smetj.net/molog/
+'''	)
+if __name__ == '__main__':
+	try:
+		#Parse command line options
+		parser = OptionParser()
+		parser.add_option("-c",  "--config", dest="configfile", default="/opt/molog/etc/main.conf", type="string", help="config file")
+		(commandline_options,commandline_actions)=parser.parse_args()
+		server=Server(configfile=commandline_options.configfile)
+		#Execute command
+		if len(commandline_actions) != 1:
+			Help().usage()
+			sys.exit
+		elif commandline_actions[0] == 'start':
+			server.check_running()
+			print ("Starting MoLog in background.")
+			with daemon.DaemonContext():
+				server.start()
+		elif commandline_actions[0] == 'debug':
+			print ("Starting MoLog in foreground.")
+			server.check_running()
+			server.start()
+		elif commandline_actions[0] == 'stop':
+			print ("Stopping MoLog gracefully.  Tail log for progress.")
+			server.stop()
+		elif commandline_actions[0] == 'kill':
+			print ("Killing MoLog forcefully.")
+			server.kill()
+		elif commandline_actions[0] == 'dump':
+			pass
+		else:
+			Help().usage()
+			print ('Unknown option %s \n' %(commandline_actions[0]))
+			sys.exit()
+	except Exception as err:
+		sys.stderr.write('A fatal error has occurred.\n')
+		sys.stderr.write('Please file a bug report to https://bugs.launchpad.net/molog including:\n')
+		sys.stderr.write('\t - MoLog version.\n')
+		sys.stderr.write('\t - A copy of your config file.\n')
+		sys.stderr.write('\t - Your OS and version.\n')
+		sys.stderr.write('\t - Your Python and Cherrypy version.\n')
+		sys.stderr.write('\t - The steps to take to reproduce this error.\n')
+		sys.stderr.write('\t - This piece of information: '+ str(type(err))+" "+str(err) + "\n" )
+		sys.exit(1)
+
+
