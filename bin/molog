@@ -128,7 +128,9 @@ class HtmlContent:
 					raise cherrypy.HTTPRedirect("/hostname/"+form['hostname'])
 				elif form.has_key("hosts"):
 					host_list=[]
-					if len(form['hosts']) == 1:
+					try:
+						assert isinstance(form['hosts'], list)
+					except:
 						host_list.append(form['hosts'])
 					else:
 						host_list = form['hosts']
