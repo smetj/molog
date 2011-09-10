@@ -1,0 +1,23 @@
+                __              
+  /\/\   ___   / /   ___   __ _ 
+ /    \ / _ \ / /   / _ \ / _` |
+/ /\/\ \ (_) / /___| (_) | (_| |
+\/    \/\___/\____/ \___/ \__, |
+                          |___/ 
+
+MoLog is a Linux/Unix syslog and Windows eventlog monitoring solution made to work together with a Nagios(tm) Core based monitoring solution.
+
+* A stand alone daemon with builtin web server.
+* Works together with a centralized rsyslog/mysql setup using the Monitorware db schema.
+* Submits results to a file, named pipe, NSCAweb or NRDP.
+* Only submits results passively when matches occur.
+* Assign a syslog priority to the monitoring warning or critical alert category.
+* Exclude syslog entries from the monitoring warning or critical status using regular expressions.
+* Apply regular expressions on a global or per host basis.
+* Remove open alerts from the web interface and update monitoring automatically through passive check results.
+* Rsyslogd DB is never altered.
+* MoLog has its own database containing references to the interesting records in the Rsyslogd database.
+* Builtin queue which buffers passive check results when they can't be delivered.
+
+For support and documentation please visit:
+	http://www.smetj.net/wiki/Molog
