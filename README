@@ -12,6 +12,7 @@ More work needs to be done on:
 
 	* Completing the REST api
 	* Web interface which interacts with REST api is missing.
+	* Delivering updates to Nagios not implemented yet.
 
 MoLog is a Linux/Unix syslog and Windows eventlog monitoring solution made to work together with a Nagios(tm) Core based monitoring solution.
 
@@ -28,5 +29,3 @@ MoLog is a Linux/Unix syslog and Windows eventlog monitoring solution made to wo
 * MoLog has its own database containing references to the interesting records in the Rsyslogd database.
 * Builtin queue which buffers passive check results when they can't be delivered.
 
-For support and documentation please visit:
-	http://www.smetj.net/wiki/Molog
