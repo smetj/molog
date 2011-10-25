@@ -126,8 +126,16 @@ class RestRegexes(object):
 		if len(args) == 2:
 			return str(self.fc.getRegexes(host=args[0],level=args[1]))
 class RestPriorities(object):
+	exposed=True
 	def __init__(self):
-		pass
+		self.fc=MologFunctions()
+	def GET(self,*args,**kwargs):
+		if len(args) == 0:
+			return str(self.fc.getPriorities())
+		if len(args) == 1:
+			return str(self.fc.getPriorities(host=args[0]))
+		if len(args) == 2:
+			return str(self.fc.getPriorities(host=args[0],level=args[1]))
 class RestRecords(object):
 	exposed=True
 	def __init__(self):
@@ -157,8 +165,11 @@ class RestDefaults(object):
 class RestResources(object):
 	'''Root class to hook all individual Rest classes to.
 	'''
-	
-	pass
+	exposed=True
+	def __init__(self):
+		pass
+	def GET(self):
+		return 'Currently implemented REST functions: to be written.'
 class RestTotals(object):
 	exposed=True
 	def __init__(self):
@@ -188,18 +199,16 @@ class WebServer(Process):
 							'log.screen': False}}
 							)
 		cherrypy.config.update({'engine.autoreload_on':False})		
-			
-			
-			
+
 		rest = RestResources()
-		rest.hosts = RestHosts()
+		rest.records = RestRecords()
 		rest.regexes = RestRegexes()
 		rest.priorities = RestPriorities()
-		rest.records = RestRecords()
+		rest.defaults = RestDefaults()				
 		rest.totals = RestTotals()
-		rest.defaults = RestDefaults()
+
 		
-		cherrypy.tree.mount(rest,'/',config=self.config)	
+		cherrypy.tree.mount(rest,'/',config=self.config)
 		cherrypy.engine.start()
 		while self.block == True:
 #			try:
@@ -337,7 +346,7 @@ class MologFunctions():
 				raise Exception('2 Elements are required when adding a new regex: level, regex')
 			else:
 				self.mologdb.db.regexes.insert(compound)			
-	def getPriority(self,host=None,level=None):
+	def getPriorities(self,host=None,level=None):
 		'''Returns a list of regular expressions for the specified host and query.'''
 		compound = {}
 		if host != None:
