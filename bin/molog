@@ -108,23 +108,31 @@ class RestHosts(object):
 	def __init__(self):
 		self.fc=MologFunctions()
 	def GET(self,*args,**kwargs):
+		limit=0
+		if kwargs.has_key('limit'):
+			limit=kwargs['limit']			
 		if len(args) == 0:
-			return str(self.fc.getRecords())
+			return str(self.fc.getRecords(limit=limit))
 		if len(args) == 1:
-			return str(self.fc.getRecords(host=args[0]))
+			return str(self.fc.getRecords(host=args[0],limit=limit))
 		if len(args) == 2:
-			return str(self.fc.getRecords(host=args[0],level=args[1]))
+			return str(self.fc.getRecords(host=args[0],level=args[1],limit=limit))
 class RestRegexes(object):
 	exposed=True
 	def __init__(self):
 		self.fc=MologFunctions()
 	def GET(self,*args,**kwargs):
+		limit=0
+		if kwargs.has_key('limit'):
+			limit=kwargs['limit']
 		if len(args) == 0:
 			return str(self.fc.getRegexes())
 		if len(args) == 1:
 			return str(self.fc.getRegexes(host=args[0]))
 		if len(args) == 2:
 			return str(self.fc.getRegexes(host=args[0],level=args[1]))
+	def PUT(self):
+		print str(cherrypy.request.body.read())
 class RestPriorities(object):
 	exposed=True
 	def __init__(self):
@@ -141,15 +149,19 @@ class RestRecords(object):
 	def __init__(self):
 		self.fc=MologFunctions()
 	def GET(self,*args,**kwargs):
-		limit=None
+		limit=0
+		host=None
+		level=None
 		if kwargs.has_key('limit'):
-			limit=kwargs['limit']			
+			limit=kwargs['limit']
+		if kwargs.has_key('host'):
+			host=kwargs['host']			
+		if kwargs.has_key('level'):
+			level=kwargs['level']
 		if len(args) == 0:
-			return str(self.fc.getRecords())
+			return str(self.fc.getRecords(limit=limit,host=host,level=level))
 		if len(args) == 1:
-			return str(self.fc.getRecords(host=args[0],limit=limit))
-		if len(args) == 2:
-			return str(self.fc.getRecords(host=args[0],level=args[1],limit=limit))
+			return str(self.fc.getRecord(id=args[0]))
 class RestDefaults(object):
 	exposed=True
 	def __init__(self):
@@ -169,7 +181,9 @@ class RestResources(object):
 	def __init__(self):
 		pass
 	def GET(self):
-		return 'Currently implemented REST functions: to be written.'
+		f = open ( '/opt/molog/var/help.html' ,'r')
+		return f.readlines()
+		f.close()
 class RestTotals(object):
 	exposed=True
 	def __init__(self):
@@ -192,7 +206,6 @@ class WebServer(Process):
 		self.config={	'global': {'server.socket_host': '0.0.0.0'},
 				'/': {'request.dispatch': cherrypy.dispatch.MethodDispatcher()}
 				}
-			
 		cherrypy.config.update({'global': {	'server.socket_port': 8080,
 							'server.socket_host': '0.0.0.0',
 							'tools.sessions.on': False,
@@ -235,19 +248,24 @@ class MologFunctions():
 		return self.mologdb.db.system.find_one( {'type':'index'},{'value':1} )['value']
 	def __setCurrentIndex(self,index):
 		self.mologdb.db.system.update( {'type':'index'}, {'type':'index','value':index} )	
-	def __getRecordsIDs(self,host=None,level=None):
-		list=[]
+	def __getRecordIDs(self,host=None,level=None,limit=0):
+		list={}
 		compound = {}
 		if host != None:
 			compound.update({'host':host})
 		if level != None:
 			compound.update({'level':level})
-		for element in self.mologdb.db.records.find( compound, {'id' : 1} ):
-			list.append(element['id'])
+		for element in self.mologdb.db.records.find( compound, { 'id' : 1, '_id' : 1 } ).limit(int(limit)):
+			list[element['id']]=str(element['_id'])
 		return list
-	def __listify(self,cursor):
+	def __getRecordID(self,id):
+		return self.mologdb.db.records.find_one( { '_id' : ObjectId(id) } )
+	def __listify(self,cursor,translate=False):
 		list=[]
 		for element in cursor:
+			if translate == True:
+				element['id']=str(element['_id'])
+				del element['_id']
 			list.append(element)
 		return list
 	def mapPriorityLevel(self,host,priority):
@@ -282,21 +300,26 @@ class MologFunctions():
 	def writeRecord(self,host,level,id):
 		self.mologdb.db.records.insert( { 'host':host, 'level': level, 'id': id } )
 	#REST functions
-	def getRecords(self,host=None,level=None,limit=None):
+	def getRecords(self,host=None,level=None,id=None,limit=0):
 		'''Returns a list of syslog records for the specified query'''
 		result=[]
-		list = self.__getRecordsIDs(host=host,level=level)
+		list = self.__getRecordIDs(host=host,level=level,limit=limit)
+		#print list
 		if len(list) > 0:
-			if limit == None:
-				limit=''
-			else:
-				limit = 'limit '+str(limit)
-			query = "SELECT DeviceReportedTime, SysLogTag, Message from SystemEvents where ID in (%s) order by DeviceReportedTime %s"%( ",".join( map(str, list) ),limit)
+			query = "SELECT DeviceReportedTime, SysLogTag, Message, ID from SystemEvents where ID in (%s) order by DeviceReportedTime"%( ",".join( map(str, list.keys()) ))
 			for record in self.syslogdb.query(query):
-				result.append({'time':str(record[0]),'syslogtag':record[1],'message':record[2]})
+				result.append({'time':str(record[0]),'syslogtag':record[1],'message':record[2], 'id':list[record[3]]})
 			return result
 		else:
 			return []
+	def getRecord(self,id):
+		'''Returns the details of 1 record'''
+		result=[]
+		mysqlid = self.__getRecordID(id=id)
+		query = "SELECT DeviceReportedTime, SysLogTag, Message, ID from SystemEvents where ID = '%s'"%(id)
+		for record in self.syslogdb.query(query):
+			result.append({'time':str(record[0]),'syslogtag':record[1],'message':record[2], 'id':id})
+		return result
 	def getTotals(self,host=None):
 		'''Returns the number of records for the specified host.'''
 		result=[]
@@ -325,7 +348,7 @@ class MologFunctions():
 			compound.update({'host':host})
 		if level != None:
 			compound.update({'level':level})
-		return self.__listify(cursor = self.mologdb.db.regexes.find(compound))
+		return self.__listify(cursor = self.mologdb.db.regexes.find(compound),translate=True)
 	def setRegex(self,host=None,level=None,regex=None,id=None,delete=False):
 		'''Sets or updates a default or custom regex'''
 		compound={}
@@ -335,7 +358,6 @@ class MologFunctions():
 			compound.update({'level':level})
 		if regex != None:
 			compound.update({'regex':regex})
-				
 		if delete == True:
 			if id == None:
 				self.mologdb.db.regexes.remove(compound)

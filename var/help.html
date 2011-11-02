@@ -1,0 +1,66 @@
+<pre>
+  /\/\   ___   / /   ___   __ _
+ /    \ / _ \ / /   / _ \ / _` |
+/ /\/\ \ (_) / /___| (_) | (_| |
+\/    \/\___/\____/ \___/ \__, |
+                          |___/ REST API
+
+MoLog REST API:
+
+The intention is to make this API comform to the REST standards. If you find any deviations to the standards please submit a bugreport to github.
+
+Overview:
+
+	/records/	: Query all records or 1 specific record.
+	/regexes/	: Query for regexes.
+
+
+Query for records:
+-------------------------------
+
+	Structure:
+
+		/records/id
+
+			host	: a valid hostname
+			id	: the records ID
+	
+	Parameters:
+		
+		limit	: a value indicating the amount of records to show.
+		host	: query records for this host.
+		level	: query for records of this level.
+
+Query regexes:
+-------------
+
+	Structure:
+	
+		/regexes/id
+		
+			host	: a valid hostname
+			id	: the regex id
+
+	Parameters:
+	
+		limit	: a value indicating the amount of records to show.
+		host	: query records for this host.
+		level	: query for records of this level.
+
+Query priorities:
+-------------
+
+	Structure:
+	
+		/priorities/id
+		
+			host	: a valid hostname
+			id	: the regex id
+
+	Parameters:
+	
+		limit	: a value indicating the amount of records to show.
+		host	: query records for this host.
+		level	: query for records of this level.
+
+</pre>
