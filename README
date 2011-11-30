@@ -10,22 +10,15 @@ This Version of MoLog is incomplete and experimental.
 
 More work needs to be done on: 
 
-	* Completing the REST api
-	* Web interface which interacts with REST api is missing.
+	* Implementing REST api
 	* Delivering updates to Nagios not implemented yet.
 
-MoLog is a Linux/Unix syslog and Windows eventlog monitoring solution made to work together with a Nagios(tm) Core based monitoring solution.
+Molog is a Log evaluating framework sitting in between RabbitMQ, Nagios and ElasticSearch.
 
-* A stand alone daemon with builtin REST api.
-* Uses as a source a centralized rsyslog/mysql setup using the Monitorware db schema.
-* Used MongoDB to store application data.
-* Submits results to a file, named pipe, NSCAweb or NRDP.
-* Rsyslogd DB is never altered.
-* Only submits results passively when matches occur.
-* Assign a syslog priority to the monitoring warning or critical alert category.
-* Exclude syslog entries from the monitoring warning or critical status using regular expressions.
-* Apply regular expressions on a global or per host basis.
-* Remove open alerts from the web interface and update monitoring automatically through passive check results.
-* MoLog has its own database containing references to the interesting records in the Rsyslogd database.
-* Builtin queue which buffers passive check results when they can't be delivered.
-
+* A stand alone daemon with configurable parallel workers.
+* Consumes and LogStash processes messages from RabbitMQ.
+* Evaluates messages and sends updates to Nagios through NSCAweb.
+* Regex rules can be applied to the LogStash generated fields.
+* Stores references to records in ElasticSearch for logs which generated alerts.
+* Forwards and stores all messages into ElasticSearch.
+* Provides API for manipulating references and manage matching rules.

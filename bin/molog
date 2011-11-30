@@ -1,607 +1,268 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-#       molog.py
+#       untitled.py
 #       
-#       Copyright 2010 Jelle Smet <web@smetj.net>
+#       Copyright 2011 Jelle <jelle@indigo>
 #       
-#       This file is part of MoLog.
+#       This program is free software; you can redistribute it and/or modify
+#       it under the terms of the GNU General Public License as published by
+#       the Free Software Foundation; either version 2 of the License, or
+#       (at your option) any later version.
 #       
-#           MoLog is free software: you can redistribute it and/or modify
-#           it under the terms of the GNU General Public License as published by
-#           the Free Software Foundation, either version 3 of the License, or
-#           (at your option) any later version.
+#       This program is distributed in the hope that it will be useful,
+#       but WITHOUT ANY WARRANTY; without even the implied warranty of
+#       MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#       GNU General Public License for more details.
 #       
-#           MoLog is distributed in the hope that it will be useful,
-#           but WITHOUT ANY WARRANTY; without even the implied warranty of
-#           MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#           GNU General Public License for more details.
+#       You should have received a copy of the GNU General Public License
+#       along with this program; if not, write to the Free Software
+#       Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
+#       MA 02110-1301, USA.
 #       
-#           You should have received a copy of the GNU General Public License
-#           along with MoLog.  If not, see <http://www.gnu.org/licenses/>.
-__version__ = "$0.2.1"
+#       
 
-from configobj import ConfigObj
-from optparse import OptionParser
-from threading import Thread
-from multiprocessing import Process, Queue
-from pymongo.objectid import ObjectId
-import signal
-import sys,os,time,daemon
 import logging
-import MySQLdb
+import daemon
+import os
+import sys
 import pymongo
 import re
-import cherrypy
+import time
+import pika
+import json
+import pyes
+from datetime import date
+from logging.handlers import SysLogHandler
+from pika.adapters import SelectConnection
+from optparse import OptionParser
+from multiprocessing import Process, Manager, Queue
+from time import sleep
 
 
-projecturl="http://www.smetj.net/wiki/molog"
+__version__='0.1'
 
-class SyslogDBMonitor(Process):
-	'''Process which processes the Syslog database for new records'''
-	def __init__(self,new_records_q):
-		Process.__init__(self)
-		self.block=True
-		self.molog_functions=MologFunctions()
-		self.new_records_q = new_records_q
-		self.daemon=True
-		self.start()
-	def run(self):
-		logging.info('started.')
-		while self.block==True:
-			new_records= self.molog_functions.getNewRecords()
-			for record in new_records.fetchall():
-				self.new_records_q.put(record)
-			time.sleep(0.1)			
-		self.cursor.close()
-		transaction.commit()
-		logging.info('exit.')
-class RegexMatcher(Process):
-	def __init__(self,molog_functions,new_records_q,unmatched_records_q):
-		Process.__init__(self)
-		self.block=True
-		self.fc=molog_functions
-		self.new_records_q = new_records_q
-		self.unmatched_records_q = unmatched_records_q
-		self.daemon=True
-		self.start()
-	def run(self):
-		logging.info('started.')
-		while self.block == True:
-			try:
-				entry = self.new_records_q.get(False)
-			except:
-				pass
-			else:
-				type,level = self.fc.mapPriorityLevel(host=entry[1],priority=entry[2])
-				if level != False:
-					index,match_status = self.fc.matchRegex(host=entry[1],level=level,string=entry[3]+entry[4])
-					if match_status == False:
-						self.unmatched_records_q.put({	'host':entry[1],
-										'level':level,
-										'syslog_id':entry[0]}
-										)
-			time.sleep(0.1)
-		logging.info('stopped.')
-class MatchMonitor(Process):
-	def __init__(self,molog_functions,unmatched_records_q):
-		Process.__init__(self)
-		self.block=True
-		self.fc=molog_functions
-		self.unmatched_records_q=unmatched_records_q
-		self.daemon=True
-		self.start()
-	def run(self):
-		logging.info('started.')
-		while self.block==True:
-			try:
-				record = self.unmatched_records_q.get(False)
-			except:
-				pass
-			else:
-				self.fc.writeRecord(host=record['host'],level=record['level'],id=record['syslog_id'])
-			time.sleep(0.1)
-		transaction.commit()
-		logging.info('stopped.')
-class RestHosts(object):
-	exposed=True
-	def __init__(self):
-		self.fc=MologFunctions()
-	def GET(self,*args,**kwargs):
-		limit=0
-		if kwargs.has_key('limit'):
-			limit=kwargs['limit']			
-		if len(args) == 0:
-			return str(self.fc.getRecords(limit=limit))
-		if len(args) == 1:
-			return str(self.fc.getRecords(host=args[0],limit=limit))
-		if len(args) == 2:
-			return str(self.fc.getRecords(host=args[0],level=args[1],limit=limit))
-class RestRegexes(object):
-	exposed=True
-	def __init__(self):
-		self.fc=MologFunctions()
-	def GET(self,*args,**kwargs):
-		limit=0
-		if kwargs.has_key('limit'):
-			limit=kwargs['limit']
-		if len(args) == 0:
-			return str(self.fc.getRegexes())
-		if len(args) == 1:
-			return str(self.fc.getRegexes(host=args[0]))
-		if len(args) == 2:
-			return str(self.fc.getRegexes(host=args[0],level=args[1]))
-	def PUT(self):
-		print str(cherrypy.request.body.read())
-class RestPriorities(object):
-	exposed=True
-	def __init__(self):
-		self.fc=MologFunctions()
-	def GET(self,*args,**kwargs):
-		if len(args) == 0:
-			return str(self.fc.getPriorities())
-		if len(args) == 1:
-			return str(self.fc.getPriorities(host=args[0]))
-		if len(args) == 2:
-			return str(self.fc.getPriorities(host=args[0],level=args[1]))
-class RestRecords(object):
-	exposed=True
-	def __init__(self):
-		self.fc=MologFunctions()
-	def GET(self,*args,**kwargs):
-		limit=0
-		host=None
-		level=None
-		if kwargs.has_key('limit'):
-			limit=kwargs['limit']
-		if kwargs.has_key('host'):
-			host=kwargs['host']			
-		if kwargs.has_key('level'):
-			level=kwargs['level']
-		if len(args) == 0:
-			return str(self.fc.getRecords(limit=limit,host=host,level=level))
-		if len(args) == 1:
-			return str(self.fc.getRecord(id=args[0]))
-class RestDefaults(object):
-	exposed=True
-	def __init__(self):
-		self.fc=MologFunctions()
-	def GET(self,*args,**kwargs):
-		if len(args) == 0:
-			pass
-		if len(args) == 1:
-			if args[0] == 'priorities':
-				return str(self.fc.getPriority())
-			if args[0] == 'regexes':
-				return str(self.fc.getRegexes())
-class RestResources(object):
-	'''Root class to hook all individual Rest classes to.
-	'''
-	exposed=True
-	def __init__(self):
-		pass
-	def GET(self):
-		f = open ( '/opt/molog/var/help.html' ,'r')
-		return f.readlines()
-		f.close()
-class RestTotals(object):
-	exposed=True
-	def __init__(self):
-		self.fc=MologFunctions()
-	def GET(self,*args,**kwargs):
-		if len(args) == 0:
-			return str(self.fc.getTotals())
-		if len(args) == 1:
-			return str(self.fc.getTotals(host=args[0]))		
-class WebServer(Process):
-	def __init__(self,molog_functions):
-		Process.__init__(self)
-		self.fc=molog_functions
-		self.block=True
-		self.daemon=True
-		self.start()
-	def run(self):
-		logging.info('started.')
+class Logger():
+	'''Creates a logger class and writes to screen or syslog.'''
+	def __init__(self, loglevel='DEBUG'):
+		self.loglevel=loglevel
+		self.screen_format=logging.Formatter('%(asctime)s %(levelname)s::%(processName)s:%(message)s')
+		self.syslog_format=logging.Formatter('NetCrawl %(processName)s %(message)s')
+	def get(self,name=None, scrlog=True, txtlog=True):
+		'''Returns a logger object to use.'''
+		log = logging.getLogger(name)
+		log.setLevel(self.loglevel)
+		syslog=SysLogHandler(address='/dev/log')
+		syslog.setFormatter(self.syslog_format)
+		log.addHandler(syslog)	
 
-		self.config={	'global': {'server.socket_host': '0.0.0.0'},
-				'/': {'request.dispatch': cherrypy.dispatch.MethodDispatcher()}
-				}
-		cherrypy.config.update({'global': {	'server.socket_port': 8080,
-							'server.socket_host': '0.0.0.0',
-							'tools.sessions.on': False,
-							'log.screen': False}}
-							)
-		cherrypy.config.update({'engine.autoreload_on':False})		
-
-		rest = RestResources()
-		rest.records = RestRecords()
-		rest.regexes = RestRegexes()
-		rest.priorities = RestPriorities()
-		rest.defaults = RestDefaults()				
-		rest.totals = RestTotals()
-
-		
-		cherrypy.tree.mount(rest,'/',config=self.config)
-		cherrypy.engine.start()
-		while self.block == True:
-#			try:
-#			print self.fc.getTotals()
-#			print "meuk"
-			#self.fc.setRegex( host='fubar', level='warning', regex='blah' )
-			#print self.fc.getPriority(level='warning')
-			
-#			time.sleep(5)
-#			self.fc.setRegex(host='fubarx',id='4e9752a12652ee0e73000002')
-#			for kaka in self.fc.getRecords(host='Sandbox',level='critical'):
-#				print kaka
-#			except:
-#				pass
-			time.sleep(0.1)
-class MologFunctions():
-	'''Functions to interact with the MologDb and SyslogDB'''
-	def __init__(self):
-		self.syslogdb=SQLDBConnection(host='localhost',db='Syslog',user='rsyslog',passwd='rsyslog')
-		self.mologdb=MongoDBConnection()
-	def __getMaxIndex(self):
-		return self.syslogdb.query('Select max(ID) from SystemEvents').fetchone()[0]
-	def __getCurrentIndex(self):
-		return self.mologdb.db.system.find_one( {'type':'index'},{'value':1} )['value']
-	def __setCurrentIndex(self,index):
-		self.mologdb.db.system.update( {'type':'index'}, {'type':'index','value':index} )	
-	def __getRecordIDs(self,host=None,level=None,limit=0):
-		list={}
-		compound = {}
-		if host != None:
-			compound.update({'host':host})
-		if level != None:
-			compound.update({'level':level})
-		for element in self.mologdb.db.records.find( compound, { 'id' : 1, '_id' : 1 } ).limit(int(limit)):
-			list[element['id']]=str(element['_id'])
-		return list
-	def __getRecordID(self,id):
-		return self.mologdb.db.records.find_one( { '_id' : ObjectId(id) } )
-	def __listify(self,cursor,translate=False):
-		list=[]
-		for element in cursor:
-			if translate == True:
-				element['id']=str(element['_id'])
-				del element['_id']
-			list.append(element)
-		return list
-	def mapPriorityLevel(self,host,priority):
-		'''Checks whether the Syslog priority is one we need to investigate or ignore.  This can be defined on a host and global level.
-		The returned result defines whether it's a global or host priority level and if it's warning or critical.'''
-		if self.mologdb.db.priorities.find_one({ 'host': host,'warning':priority }):
-			return ( 'host', 'warning' )		
-		if self.mologdb.db.priorities.find_one({ 'host': host,'critical':priority }):
-			return ( 'host', 'critical' )		
-		if self.mologdb.db.priorities.find_one({ 'host': {'$exists':False}, 'warning':priority }):
-			return ( 'default', 'warning' )
-		if self.mologdb.db.priorities.find_one({ 'host': {'$exists':False}, 'critical':priority }):
-			return ( 'default', 'critical' )
-		return (False,False)
-	def getNewRecords(self):
-		start_index= self.__getCurrentIndex()
-		end_index = self.__getMaxIndex()
-		result=self.syslogdb.query("SELECT ID, FromHost, Priority, SysLogTag, Message FROM SystemEvents WHERE ID > %s and ID <= %s"%(start_index,end_index))
-		self.__setCurrentIndex(end_index)
-		return result
-	def matchRegex(self,host,level,string):
-		'''Matches the string against the right Regex level on host based regexes or global based regexes'''
-		for regex in self.mologdb.db.regexes.find( { 'host' : host, 'level' : level } ):
-			if re.match (regex['regex'],string):
-				return (regex['_id'],True)
-			return (False,False)
-		for regex in self.mologdb.db.regexes.find ( { 'host': {'$exists':'false'}, 'level' : level } ):
-			if re.match (regex['regex'],string):
-				return (regex['_id'],True)
-			return (False,False)
-		return (False,False)
-	def writeRecord(self,host,level,id):
-		self.mologdb.db.records.insert( { 'host':host, 'level': level, 'id': id } )
-	#REST functions
-	def getRecords(self,host=None,level=None,id=None,limit=0):
-		'''Returns a list of syslog records for the specified query'''
-		result=[]
-		list = self.__getRecordIDs(host=host,level=level,limit=limit)
-		#print list
-		if len(list) > 0:
-			query = "SELECT DeviceReportedTime, SysLogTag, Message, ID from SystemEvents where ID in (%s) order by DeviceReportedTime"%( ",".join( map(str, list.keys()) ))
-			for record in self.syslogdb.query(query):
-				result.append({'time':str(record[0]),'syslogtag':record[1],'message':record[2], 'id':list[record[3]]})
-			return result
-		else:
-			return []
-	def getRecord(self,id):
-		'''Returns the details of 1 record'''
-		result=[]
-		mysqlid = self.__getRecordID(id=id)
-		query = "SELECT DeviceReportedTime, SysLogTag, Message, ID from SystemEvents where ID = '%s'"%(id)
-		for record in self.syslogdb.query(query):
-			result.append({'time':str(record[0]),'syslogtag':record[1],'message':record[2], 'id':id})
-		return result
-	def getTotals(self,host=None):
-		'''Returns the number of records for the specified host.'''
-		result=[]
-		if host==None:
-			for host in self.mologdb.db.records.distinct("host"):
-				result.append({ host:{ 	'warnings': self.mologdb.db.records.find({'host':host,'level':'warning'},{'id':1}).count(), 
-							'criticals': self.mologdb.db.records.find({'host':host,'level':'critical'},{'id':1}).count() }} )
-			return result
-		else:
-			return ( { host: {	'warnings': self.mologdb.db.records.find({'host':host,'level':'warning'},{'id':1}).count(),
-						'criticals': self.mologdb.db.records.find({'host':host,'level':'critical'},{'id':1}).count() }} )
-	def deleteHosts(self,host=None,level=None):
-		'''Deletes all Syslog references from the Molog database for the specified host and query.'''
-		compound={}
-		if host != None:
-			compound.update({'host':host})
-		if level != None:
-			compound.update({'level':host})			
-		list=self.mologdb.db.records.find(compound).distinct('host')
-		self.mologdb.db.records.remove(compound)
-		return list		
-	def getRegexes(self,host=None,level=None):
-		'''Returns a list of regular expressions for the specified host and query.'''
-		compound = {}
-		if host != None:
-			compound.update({'host':host})
-		if level != None:
-			compound.update({'level':level})
-		return self.__listify(cursor = self.mologdb.db.regexes.find(compound),translate=True)
-	def setRegex(self,host=None,level=None,regex=None,id=None,delete=False):
-		'''Sets or updates a default or custom regex'''
-		compound={}
-		if host != None:
-			compound.update({'host':host})
-		if level != None:
-			compound.update({'level':level})
-		if regex != None:
-			compound.update({'regex':regex})
-		if delete == True:
-			if id == None:
-				self.mologdb.db.regexes.remove(compound)
-			else:
-				self.mologdb.db.regexes.remove({'_id':ObjectId(id)})		
-		else:
-			if level == None or regex == None:
-				raise Exception('2 Elements are required when adding a new regex: level, regex')
-			else:
-				self.mologdb.db.regexes.insert(compound)			
-	def getPriorities(self,host=None,level=None):
-		'''Returns a list of regular expressions for the specified host and query.'''
-		compound = {}
-		if host != None:
-			compound.update({'host':host})
-		if level != None:
-			compound.update({'level':level})
-		return self.__listify(cursor = self.mologdb.db.priorities.find(compound))
-	def setPriority(self,host=None,level=None,priority=None,id=None,delete=False):
-		'''Sets or updates a default or custom priority'''
-		compound={}
-		if host != None:
-			compound.update({'host':host})
-		if level != None:
-			compound.update({'level':level})
-		if regex != None:
-			compound.update({'priority':priotiry})
-		if delete == True:
-			if id == None:
-				self.mologdb.db.priorities.remove(compound)
-			else:
-				self.mologdb.db.priorities.remove({'_id':ObjectId(id)})		
-		else:
-			if level == None or regex == None:
-				raise Exception('2 Elements are required when adding a new priority: level, priority')
-			else:
-				self.mologdb.db.priorities.insert(compound)
-class SQLDBConnection():
-	def __init__(self,host,db,user,passwd):
-		self.block=True
-		self.host=host
+		if scrlog == True:
+			scr_handler = logging.StreamHandler()
+			scr_handler.setFormatter(self.screen_format)
+			log.addHandler(scr_handler)
+		return log
+class RegexHandler():
+	'''Class used to manipulate the regexes stored in MongoDB'''
+	def __init__(self,db,logger):
 		self.db=db
-		self.user=user
-		self.passwd=passwd
-		self.connection=None
-		self.cursor=None
-		self.__connect()
-	def query(self,query):
-		while self.block==True:
-#			try:
-				self.cursor.execute(query)
-				return self.cursor
-#			except:
-#				logging.error('Failed to connect to database')
-#				try:
-#					self.__connect()
-#				except:
-#					pass
-#					time.sleep(1)
-#				else:
-#					logging.info('Succeeded to connecto to database')
-	def __connect(self):
-		self.connection=MySQLdb.connect(host=self.host,db=self.db,user=self.user,passwd=self.passwd)
-		self.cursor=self.connection.cursor()
+		self.logger=logger
+		self.host_regexes=Manager().dict()
+		self.default_regexes=Manager().dict()
+	def add(self,data=None):
+		'''Adds a regex.'''
+		self.db.regexes.insert(data)
+	def update(self,id,regex):
+		'''Updates a regex to a new value.'''
+		pass
+class MatchWorker(Process):
+	'''Matchworker is a worker process which consumes the queue.  It can run in parallel.'''
+	def __init__(self,broker_host,broker_queue,elastic_search,mongo_db,logger,block):
+		Process.__init__(self)
+		self.broker=broker_host
+		self.queue=broker_queue
+		self.elastic_search=elastic_search
+		self.mongo_db=mongo_db
+		self.logger=logger
+		self.block=block
+				
+		self.daemon=True
+		self.start()
+	def run(self):
+		self.logger.info('Started')
+		#Setup Broker connection
+		self.parameters = pika.ConnectionParameters(self.broker)
+		self.connection = SelectConnection(self.parameters,self.__on_connected)	
+		try:
+			self.connection.ioloop.start()
+		except KeyboardInterrupt:
+			self.connection.close()
+			self.connection.ioloop.start()
+	def __on_connected(self,connection):
+		self.logger.info('Connecting to broker.')
+		connection.channel(self.__on_channel_open)
+	def __on_channel_open(self,new_channel):
+		self.channel = new_channel
+		self.__initialize()
+		self.channel.basic_consume(self.processData, queue = self.queue)
+	def __initialize(self):
+		self.logger.debug('Creating exchanges, queues and bindings on broker.')
+		self.channel.exchange_declare(exchange=self.queue,type='fanout',durable=True)
+		self.channel.queue_declare(queue=self.queue,durable=True)
+	def processData(self,ch, method, properties, body):
+		'''Broker connection callback which does all the heavy lifting on the incoming data.'''
+		try:
+			data = json.loads(body)
+		except Exception as err:
+			self.logger.warn('Garbage reveived from broker, purging. Reason: %s'%(err))
+			self.channel.basic_ack(delivery_tag=method.delivery_tag)
+		else:
+			if self.evaluate(data) == True:
+				try:
+					feedback=self.writeElastic(data)
+					self.writeMongo(host=data['@source_host'], id=feedback['_id'])
+					self.updateMonitoring(host=data['@source_host'],message=data['@message'])
+				except Exception as err:
+					self.logger.warn('I could not process record entirely. Resubmitted to queue. Reason: %s'%(err))
+				else:
+					self.writeElastic(data)
+					self.channel.basic_ack(delivery_tag=method.delivery_tag)
+			else:
+				self.writeElastic(data)
+				self.channel.basic_ack(delivery_tag=method.delivery_tag)			
+	def evaluate(self,document):
+		'''Applies all defined regexes on the document to see whether we can ignore it'''
+		for regex in self.mongo_db.regexes.find({}).sort('order'):
+			if re.match(regex['type'],document['@type']):
+				if len(regex['regexes']) > 0:
+					for field in regex['regexes']:
+						if document['@fields'].has_key(field):
+							for data in document['@fields'][field]:
+								if re.match(regex['regexes'][field],data):
+									return False
+		return True
+	def writeElastic(self,data):
+		'''Writes the incoming data to Elasticsearch.'''
+		return self.elastic_search.insert(data)
+	def writeMongo(self,host=None,id=None):
+		'''Writes the references towards the Elasticsearch object in the DB'''
+		self.mongo_db.results.insert({'host':host,'id':id})
+	def updateMonitoring(self,host=None,message=None):
+		'''Sends an update message to monitoring indicating the total warnings/criticals of a host have changed.'''
+		self.logger.debug("Send an update to monitoring for host %s. Number: %s Message: %s"%(host,self.mongo_db.results.find({'host':host}).count(),message))
 class MongoDBConnection():
-	def __init__(self):
-		self.connection=pymongo.Connection()
+	'''Creates a MongoDB connection object.'''
+	def __init__(self,logger):
+		self.connection=pymongo.Connection('sandbox')
 		self.db = self.connection.molog
-		self.__checkIntegrity()
+		self.logger=logger
 	def __checkIntegrity(self):
-		#molog.system 		-> contains system related settings & defaults
-		#molog.priorities 	-> contains host priorities
 		#molog.regexes		-> contains host regexes
-		#molog.records		-> contains unmatched records per host
-		if not self.db.priorities.find_one( { 'host': { '$exists':False } } ):
-			logging.info ( 'default priorities do not exist. Creating it.' )
-			self.db.priorities.insert ( { 'warning' : [ 4,7 ] } )
-			self.db.priorities.insert ( { 'critical': [ 0,1,2,3 ] } ) 
+		#molog.references	-> contains references.
 		if not self.db.regexes.find_one( { 'host': { '$exists':False } } ):
-			logging.info ('default regexes do not exist. Creating it.' )
+			self.logging.info ('default regexes do not exist. Creating it.' )
 			self.db.regexes.insert ( { 'level' : 'warning', 'regex' : '$.' } )
 			self.db.regexes.insert ( { 'level' : 'critical', 'regex' : '$.' } )
-		if not self.db.system.find_one( { 'type': 'index' } ):
-			logging.info ('start index does not exist. Creating it.' )
-			self.db.system.insert ( { 'type' : 'index', 'value' : 0 } )
+class ElasticSearch():
+	'''Creates an ElasticSearch connection object'''
+	def __init__(self,host):
+		self.conn = pyes.ES([host])
+	def insert(self,data):
+		'''Inserts a document in ES with the right index'''
+		return self.conn.index(data,"logstash-%s.%s.%s"%(date.today().year, date.today().month, date.today().day),data['@type'])
 class Server():
-	'''Class which handles the starting and stopping of all components'''
-	def __init__(self,config_file=None):
-		self.config_file=config_file
-		self.thread_block=True
-		self.p={}
-		self.o={}
-	def block(self):
-		return self.thread_block
+	'''Server class handling process control, startup & shutdown'''
+	def __init__(self,cli_options=None):
+		self.cli_options=cli_options
+		self.pid=cli_options.pid
+		self.block=True
+	def lock(self):
+		return self.block
+	def doPID(self):
+		if self.checkPIDRunning() == False:
+			self.writePID()
+	def checkPIDRunning(self):
+		'''Checks whether the pid file exists and if it does, checks whether a process is running with that pid.
+		Returns False when no process is running with that pid otherwise True'''
+		if os.path.isfile(self.pid):
+			try:
+				pid_file = open(self.pid, 'r')
+				pid=pid_file.readline()
+				pid_file.close()
+			except Exception as err:
+				sys.stderr.write('I could not open the pid file. Reason: %s\n'%(err))
+				sys.exit(1)
+		try:
+			os.kill(int(pid),0)
+		except:
+			return False
+		else:
+			sys.stderr.write('There is already a process running with pid %s\n'%(pid))
+			sys.exit(1)				
+	def writePID(self):
+		try:
+			pid = open ( self.pid, 'w' )
+			pid.write (str(os.getpid()))
+			pid.close()
+		except Exception as err:
+			sys.stderr.write('I could not write the pid file. Reason: %s\n'%(err))
+			sys.exit(1)
+	def deletePID(self):
+		try:
+			os.remove ( self.pid )
+		except:
+			pass				
 	def start(self):
-		#Load config file
-		config = self.__loadConfig(self.config_file)
+		#Creating logging object
+		logger = Logger()
+		self.logger=logger.get(name=self.__class__.__name__)
+		self.logger.warning('started')
+
+		#Write PID
+		self.doPID()
 		
-		#Create PID
-		self.__createPID(file=config["application"]["pidfile"])
-		
-		#Expand search path
-		sys.path.append(config['application']['libs'])
+		#Create RegexLookup
+		regex_handler = RegexHandler(	db=MongoDBConnection(logger=self.logger).db,
+						logger=self.logger
+						)
 				
-		#Start a LogGenerator thread
-		logging.basicConfig(	format='%(asctime)s %(levelname)s %(processName)s %(message)s',
-					filename=config['application'].get('serverlogfile','molog.log'),
-					level=logging.INFO)
-		logging.info('started')
-				
-		#Create new records queue
-		new_records_q = Queue()
+		#Create ElasticSearch object
+		elastic_search= ElasticSearch(host=self.cli_options.es_host)
 		
-		#Create matched records queue
-		unmatched_records_q = Queue()		
-		
-		#Monitor Syslog database
-		self.__register(priority=30,
-				name='syslog_db_monitor',
-				object=SyslogDBMonitor(	new_records_q = new_records_q )
-				)
-		
-		#Start the unmatched records Monitor
-		self.__register(priority=40,
-				name='Unmatched records',
-				object=MatchMonitor(	molog_functions=MologFunctions(),
-							unmatched_records_q = unmatched_records_q
+		#Create Workers
+		workers=[]
+		for worker in range (1):
+			workers.append(	MatchWorker(	broker_host='sandbox',
+							broker_queue='molog_input',
+							mongo_db=MongoDBConnection(logger=self.logger).db,
+							elastic_search=elastic_search,
+							logger=self.logger,
+							block=self.lock
 							)
-				)
-	
-		#Start x amount of Regex matchers
-		for number in range(10,15):
-			self.__register(priority=number,
-					name='regex_matcher_'+str(number),
-					object=RegexMatcher(	molog_functions=MologFunctions(),
-								new_records_q = new_records_q,
-								unmatched_records_q = unmatched_records_q
-								)
 					)
-			
-		#Start the Webserver
-		self.__register(	priority=20,
-					name='Webserver',
-					object=WebServer(	molog_functions=MologFunctions()
-								)
-					)
+						
+		while self.lock()==True:
+			sleep(0.1)
 		
-		#Block here		
-		try:
-			while self.block()==True:
-				time.sleep(0.1)
-		except KeyboardInterrupt:
-			self.stop()
-			logging.info('MoLog Stopped.')
-			os.remove(config['application']['pidfile'])
+		self.logger.info('Exit')
 	def stop(self):
-		for priority in sorted(self.p.keys()):
-			self.o[self.p[priority]].block=False
-			while self.o[self.p[priority]].is_alive():
-				logging.info('Waiting for process %s to end'%self.o[self.p[priority]].name)
-				time.sleep(1)
-	def kill(self):
-		try:
-			pidfile=open(self.config["application"]["pidfile"],'r')
-			pid=pidfile.read()
-			pidfile.close()
-			os.remove(self.config["application"]["pidfile"])
-			os.kill(int(pid),signal.SIGKILL)
-		except Exception as error:
-			sys.stderr.write('Could not kill MoLog.  Reason: %s\n'%error)
-	def __register(self,priority,name,object):
-		setattr(self,name,object)
-		self.p[priority] = name
-		self.o[name] = object
-	def __loadConfig(self,config_file):
-		return ConfigObj(self.config_file)
-	def __createPID(self,file):
-		pidfile=open(file,'w')
-		pidfile.write(str(os.getpid()))
-		pidfile.close()		
-class Help:
-	def __init__(self):
-		pass
-	def usage(self):
-		print ("molog %s Copyright 2009,2010,2011 by Jelle Smet <jelle@smetj.net>" %(__version__))
-		print ('''Usage: molog command [--config configfile] 
-	
-	Valid commands: 
-	
-		start	Starts the MoLog daemon in the background.
-					
-		stop	Gracefully stops the MoLog daemon running in the background.
-
-		kill	Kills the MoLog daemon running with the pid defined in your config file.
-			
-		debug	Starts the MoLog daemon in the foreground while showing real time log and debug messages.
-			The process can be stopped with ctrl+c which will ends MoLog gracefully.
-			A second ctrl+c will kill MoLog.
-				
-	Parameters: 
-		--config	Defines the location of the config file to use.  The parameter is obligatory.  
-				-c can also be used.
-								
-MoLog is distributed under the Terms of the GNU General Public License Version 3. (http://www.gnu.org/licenses/gpl-3.0.html)
-
-For more information please visit http://www.smetj.net/molog/
-'''	)
+		self.block=False
 if __name__ == '__main__':
-#	try:
-		#Parse command line options
-		parser = OptionParser()
-		parser.add_option("-c",  "--config", dest="config", default="/opt/molog/etc/main.conf", type="string", help="config file")
-		(commandline_options,commandline_actions)=parser.parse_args()
-		server=Server(config_file=commandline_options.config)
-		#Execute command
-		if len(commandline_actions) != 1:
-			Help().usage()
-			sys.exit
-		elif commandline_actions[0] == 'start':
-			print ("Starting MoLog in background.")
+	parser = OptionParser()
+	parser.add_option("--pid", dest="pid", default="file.pid", type="string", help="The location of the pid file." )
+	parser.add_option("--foreground", action="store_true", dest="foreground", default = False, help="If defined doesn't fork the daemon." )
+	parser.add_option("--es_host", dest="es_host", default="127.0.0.1:5200", type="string", help="The elastic search host.")
+	(cli_options,cli_actions)=parser.parse_args()
+	
+	try:
+		server=Server(cli_options)
+		
+		if cli_options.foreground == False:		
 			with daemon.DaemonContext():
 				server.start()
-		elif commandline_actions[0] == 'debug':
-			print ("Starting MoLog in foreground.")
-			server.start()
-		elif commandline_actions[0] == 'stop':
-			print ("Stopping MoLog gracefully.  Tail log for progress.")
-			server.stop()
-		elif commandline_actions[0] == 'kill':
-			print ("Killing MoLog forcefully.")
-			server.kill()
-		elif commandline_actions[0] == 'dump':
-			pass
 		else:
-			Help().usage()
-			print ('Unknown option %s \n' %(commandline_actions[0]))
-			sys.exit()
+			server.start()
 #	except Exception as err:
-#		sys.stderr.write('A fatal error has occurred.\n')
-#		sys.stderr.write('Please file a bug report to https://bugs.launchpad.net/molog including:\n')
-#		sys.stderr.write('\t - MoLog version.\n')
-#		sys.stderr.write('\t - A copy of your config file.\n')
-#		sys.stderr.write('\t - Your OS and version.\n')
-#		sys.stderr.write('\t - Your Python and Cherrypy version.\n')
-#		sys.stderr.write('\t - The steps to take to reproduce this error.\n')
-#		sys.stderr.write('\t - This piece of information: '+ str(type(err))+" "+str(err) + "\n" )
-#		sys.exit(1)
+#		print str(err)
+	except KeyboardInterrupt:
+		server.stop()
+		server.deletePID()
