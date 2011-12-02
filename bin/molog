@@ -118,7 +118,7 @@ class MatchWorker(Process):
 			self.logger.warn('Garbage reveived from broker, purging. Reason: %s'%(err))
 			self.channel.basic_ack(delivery_tag=method.delivery_tag)
 		else:
-			if self.evaluate(data) == True:
+			if self.ignoreLog(data) == False:
 				try:
 					feedback=self.writeElastic(data)
 					self.writeMongo(host=data['@source_host'], id=feedback['_id'], priority=data['@fields']['priority'])
@@ -131,17 +131,20 @@ class MatchWorker(Process):
 			else:
 				self.writeElastic(data)
 				self.channel.basic_ack(delivery_tag=method.delivery_tag)			
-	def evaluate(self,document):
+	def ignoreLog(self,document):
 		'''Applies all defined regexes on the document to see whether we can ignore it'''
 		for regex in self.mongo_db.regexes.find({}).sort('order'):
 			if re.match(regex['type'],document['@type']):
 				if len(regex['regexes']) > 0:
+					flag=True
 					for field in regex['regexes']:
 						if document['@fields'].has_key(field):
 							for data in document['@fields'][field]:
-								if re.match(regex['regexes'][field],data):
-									return False
-		return True
+								if not re.match(regex['regexes'][field],data):
+									flag = False
+			if flag == True:
+				return True
+		return False
 	def writeElastic(self,data):
 		'''Writes the incoming data to Elasticsearch.'''
 		return self.elastic_search.insert(data)
