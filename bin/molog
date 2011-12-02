@@ -32,6 +32,8 @@ import time
 import pika
 import json
 import pyes
+import threading
+import cherrypy
 from datetime import date
 from logging.handlers import SysLogHandler
 from pika.adapters import SelectConnection
@@ -174,6 +176,62 @@ class ElasticSearch():
 	def insert(self,data):
 		'''Inserts a document in ES with the right index'''
 		return self.conn.index(data,"logstash-%s.%s.%s"%(date.today().year, date.today().month, date.today().day),data['@type'])
+class WebServer(threading.Thread):
+	def __init__(self,host,port,ssl="off",ssl_certificate=None,ssl_private_key=None,rest_functions=None,enable_logging=True,logger=None,blockcallback=None):
+		threading.Thread.__init__(self)
+		self.host=host
+		self.port=port
+		self.ssl=ssl
+		self.ssl_certificate=ssl_certificate
+		self.ssl_private_key=ssl_private_key
+		self.rest_functions=rest_functions
+		self.enable_logging=enable_logging
+		self.logger=logger
+		self.loop=blockcallback
+		self.daemon=True
+		self.start()		
+	def run(self):
+		self.logger.info("WebServer thread started on %s:%s"%(self.host,self.port))
+		config={'global': {'server.socket_host': self.host}}
+		cherrypy.config.update(	
+								{ 
+								'global': 
+									{
+									'server.socket_port': int(self.port),
+									'server.socket_host': self.host,
+									'tools.sessions.on': False,
+									'log.screen': False
+									}
+								}
+								)
+						
+		#check if we need to run over https or not
+		if self.ssl == "on":
+			cherrypy.config.update(
+									{
+									'server.ssl_certificate': self.ssl_certificate,
+									'server.ssl_private_key': self.ssl_private_key
+									}
+								  )	
+		
+		cp_app = cherrypy.tree.mount(self.rest_functions,'/',config=config)
+		
+		if self.enable_logging == True:
+			cp_app.log.access_log_format = '%(h)s %(l)s %(u)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s"'
+			cp_app.log.access_log = self.logger
+			cp_app.log.error_log = self.logger
+		cherrypy.engine.start()
+		while self.loop() == True:
+			time.sleep(0.1)
+		cherrypy.engine.exit()
+		self.logger.info("WebServer thread stopped.")
+class RestFunctions():
+	'''Class which provides form to accept incoming NSCAweb data.'''
+	def __init__(self):
+		pass
+	def index(self,*args,**form):
+		return "blah"
+	index.exposed = True
 class Server():
 	'''Server class handling process control, startup & shutdown'''
 	def __init__(self,config):
@@ -254,6 +312,20 @@ class Server():
 							block=self.lock
 							)
 					)
+		#Build REST functions
+		
+		
+		#Start Webserver
+		webserver = WebServer	(	host=self.config['API']['host'],
+						port=self.config['API']['port'],
+						ssl="off",
+						ssl_certificate=None,
+						ssl_private_key=None,
+						rest_functions=RestFunctions(),
+						enable_logging=True,
+						logger=self.logger,
+						blockcallback=self.lock
+						)
 						
 		while self.lock()==True:
 			sleep(0.1)
