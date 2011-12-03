@@ -165,13 +165,38 @@ class MongoDBConnection():
 		self.logger=logger
 	def __checkIntegrity(self):
 		pass
-	def regexes(self,id=None):
-		list=[]
-		for regex in self.db.regexes.find():
-			regex[id] = str(ObjectId(regex[_id]))
-			del regex[_id]
-			list.append(regex)
-		return json.dumps(list)
+	def queryRegex(self,id=None):
+		if id == None:
+			list=[]
+			for regex in self.db.regexes.find():
+				regex['id'] = str(ObjectId(regex['_id']))
+				del regex['_id']
+				list.append(regex)
+				
+			return json.dumps(list)
+		else:
+			return json.dumps(self.__replaceID(data=self.db.regexes.find_one( { '_id' : ObjectId(id) } )))
+	def removeRegex(self,id=None,tags=[]):
+		if id == None:
+			pass
+		else:
+			try:
+				self.db.regexes.remove( { '_id' : ObjectId(id) } )
+			except:
+				pass
+			else:
+				return json.dumps({'status':'ok'})
+	def addRegex(self,regex=None):
+		pass
+	def updateRegex(self,id=None,regex=None):
+		pass
+	def __replaceID(self,data=None):
+		if data == None or data == '':
+			return []
+		else:
+			data['id'] = str(ObjectId(data['_id']))
+			del data['_id']
+			return data
 			
 class ElasticSearch():
 	'''Creates an ElasticSearch connection object'''
@@ -237,7 +262,15 @@ class RestRegex():
 		self.db=db
 	def GET(self,*args,**kwargs):
 		if len(args) == 0:
-			return self.db.regexes()
+			return self.db.queryRegex()
+		else:
+			return self.db.queryRegex(id=args[0])
+	def DELETE(self,*args,**kwargs):
+		if len(args) == 0:
+			return self.db.removeRegex()
+		else:
+			print kwargs['pies']
+			return self.db.removeRegex(id=args[0])
 class RestHost():
 	exposed=True
 	def __init__(self,db=None):
@@ -253,7 +286,7 @@ class RestTotals():
 class RestFunctions():
 	exposed=True	
 	def __init__(self,mongo_db=None):
-		self.mongo=mongo_db.db
+		self.mongo=mongo_db
 		self.regex = RestRegex(db=self.mongo)
 		self.host = RestHost(db=self.mongo)
 		self.totals = RestTotals(db=self.mongo)
