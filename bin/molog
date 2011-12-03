@@ -164,12 +164,15 @@ class MongoDBConnection():
 		self.db = self.connection.molog
 		self.logger=logger
 	def __checkIntegrity(self):
-		#molog.regexes		-> contains host regexes
-		#molog.references	-> contains references.
-		if not self.db.regexes.find_one( { 'host': { '$exists':False } } ):
-			self.logging.info ('default regexes do not exist. Creating it.' )
-			self.db.regexes.insert ( { 'level' : 'warning', 'regex' : '$.' } )
-			self.db.regexes.insert ( { 'level' : 'critical', 'regex' : '$.' } )
+		pass
+	def regexes(self,id=None):
+		list=[]
+		for regex in self.db.regexes.find():
+			regex[id] = str(ObjectId(regex[_id]))
+			del regex[_id]
+			list.append(regex)
+		return json.dumps(list)
+			
 class ElasticSearch():
 	'''Creates an ElasticSearch connection object'''
 	def __init__(self,host):
@@ -233,11 +236,8 @@ class RestRegex():
 	def __init__(self,db=None):
 		self.db=db
 	def GET(self,*args,**kwargs):
-		result = []
-		for regex in self.db.regexes.find():
-			print regex
-			result.append(regex)
-		return str(result)
+		if len(args) == 0:
+			return self.db.regexes()
 class RestHost():
 	exposed=True
 	def __init__(self,db=None):
