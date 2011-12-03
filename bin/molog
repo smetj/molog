@@ -36,6 +36,7 @@ import threading
 import cherrypy
 from datetime import date
 from logging.handlers import SysLogHandler
+from pymongo.objectid import ObjectId
 from pika.adapters import SelectConnection
 from optparse import OptionParser
 from multiprocessing import Process, Manager, Queue
@@ -192,7 +193,9 @@ class WebServer(threading.Thread):
 		self.start()		
 	def run(self):
 		self.logger.info("WebServer thread started on %s:%s"%(self.host,self.port))
-		config={'global': {'server.socket_host': self.host}}
+		config={'global': {'server.socket_host': self.host},
+			'/': {'request.dispatch': cherrypy.dispatch.MethodDispatcher()}
+			}
 		cherrypy.config.update(	
 								{ 
 								'global': 
@@ -225,18 +228,35 @@ class WebServer(threading.Thread):
 			time.sleep(0.1)
 		cherrypy.engine.exit()
 		self.logger.info("WebServer thread stopped.")
-class RestFunctions():
-	'''Class which provides form to accept incoming NSCAweb data.'''
-	def __init__(self,mongo_db=None):
-		self.mongo=mongo_db
-	def regex(self,*args,**form):
+class RestRegex():
+	exposed=True
+	def __init__(self,db=None):
+		self.db=db
+	def GET(self,*args,**kwargs):
 		result = []
-		for regex in self.mongo.db.regexes.find():
+		for regex in self.db.regexes.find():
 			print regex
 			result.append(regex)
 		return str(result)
-			
-	regex.exposed = True
+class RestHost():
+	exposed=True
+	def __init__(self,db=None):
+		pass
+	def GET(self,*args,**kwargs):
+		pass
+class RestTotals():
+	exposed=True	
+	def __init__(self,db=None):
+		pass
+	def GET(self,*args,**kwargs):
+		pass
+class RestFunctions():
+	exposed=True	
+	def __init__(self,mongo_db=None):
+		self.mongo=mongo_db.db
+		self.regex = RestRegex(db=self.mongo)
+		self.host = RestHost(db=self.mongo)
+		self.totals = RestTotals(db=self.mongo)
 class Server():
 	'''Server class handling process control, startup & shutdown'''
 	def __init__(self,config):
