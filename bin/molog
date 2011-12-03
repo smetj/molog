@@ -227,11 +227,16 @@ class WebServer(threading.Thread):
 		self.logger.info("WebServer thread stopped.")
 class RestFunctions():
 	'''Class which provides form to accept incoming NSCAweb data.'''
-	def __init__(self):
-		pass
-	def index(self,*args,**form):
-		return "blah"
-	index.exposed = True
+	def __init__(self,mongo_db=None):
+		self.mongo=mongo_db
+	def regex(self,*args,**form):
+		result = []
+		for regex in self.mongo.db.regexes.find():
+			print regex
+			result.append(regex)
+		return str(result)
+			
+	regex.exposed = True
 class Server():
 	'''Server class handling process control, startup & shutdown'''
 	def __init__(self,config):
@@ -312,8 +317,8 @@ class Server():
 							block=self.lock
 							)
 					)
-		#Build REST functions
-		
+		rest_functions = RestFunctions	(	mongo_db = MongoDBConnection(logger=self.logger)
+							)
 		
 		#Start Webserver
 		webserver = WebServer	(	host=self.config['API']['host'],
@@ -321,7 +326,7 @@ class Server():
 						ssl="off",
 						ssl_certificate=None,
 						ssl_private_key=None,
-						rest_functions=RestFunctions(),
+						rest_functions=rest_functions,
 						enable_logging=True,
 						logger=self.logger,
 						blockcallback=self.lock
