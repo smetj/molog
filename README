@@ -13,12 +13,12 @@ More work needs to be done on:
 	* Implementing REST api
 	* Delivering updates to Nagios not implemented yet.
 
-Molog is a Log evaluating framework sitting in between RabbitMQ, Nagios and ElasticSearch.
+Molog is a framework which consumes and matches logs from RabbitMQ and sends updates to Nagios and ElasticSearch.
 
 * A stand alone daemon with configurable parallel workers.
-* Consumes and LogStash processes messages from RabbitMQ.
-* Evaluates messages and sends updates to Nagios through NSCAweb.
-* Regex rules can be applied to the LogStash generated fields.
-* Stores references to records in ElasticSearch for logs which generated alerts.
+* Workers consume LogStash processed messages from RabbitMQ and perform negative regex matching on them.
+* Regex rules can be applied to all LogStash generated fields.
+* Sends sends updates to Nagios through NSCAweb.
 * Forwards and stores all messages into ElasticSearch.
-* Provides API for manipulating references and manage matching rules.
+* Stores references of ElasticSearch records into a MongoDB instance.
+* Provides API for querying and manipulating references and regexes.
