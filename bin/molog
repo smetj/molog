@@ -157,7 +157,7 @@ class MatchWorker(Process):
 		self.mongo_db.results.insert({'host':host,'level':level,'es_ref':id})
 	def updateMonitoring(self,host=None,message=None):
 		'''Sends an update message to monitoring indicating the total warnings/criticals of a host have changed.'''
-		self.logger.debug("Send an update to monitoring for host %s. Number: %s Message: %s"%(host,self.mongo_db.results.find({'host':host}).count(),message))
+		self.logger.debug("Send an update to monitoring for host %s. %s warning %s critical"%(host,self.mongo_db.results.find({'host':host,'level':'warning'}).count(),self.mongo_db.results.find({'host':host,'level':'critical'}).count()))
 class MongoDBConnection():
 	'''Creates a MongoDB connection object.'''
 	def __init__(self,host,logger,es_lookup=None):
