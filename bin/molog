@@ -231,6 +231,18 @@ class MongoDBConnection():
 		if host != None:
 			self.db.results.remove({'host':host})		
 			return json.dumps({'status':'ok'})
+	def queryTotal(self,host=None):
+		if host ==None:
+			list=[]
+			for host in sorted(self.db.results.distinct("host")):
+				list.append({	host :{'warning': self.db.results.find({'host':host,'level':'warning'}).count(),
+						'critical': self.db.results.find({'host':host,'level':'critical'}).count()
+						}})
+			return json.dumps(list)
+		else:
+			return json.dumps([{	host :{'warning': self.db.results.find({'host':host,'level':'warning'}).count(),
+						'critical': self.db.results.find({'host':host,'level':'critical'}).count()
+						}}])
 	def __replaceID(self,data=None):
 		if data == None or data == '':
 			return []
@@ -368,13 +380,16 @@ class RestRecord():
 			return self.db.deleteRecord(id=args[0])
 		else:
 			return self.db.deleteRecord(host=kwargs.get('host',None))
-			
 class RestTotals():
 	exposed=True	
 	def __init__(self,db=None):
-		pass
+		self.db=db
 	def GET(self,*args,**kwargs):
-		pass
+		if kwargs.has_key('host'):
+			return self.db.queryTotal(host=kwargs['host'])
+		else:
+			return self.db.queryTotal()
+		
 class RestFunctions():
 	exposed=True	
 	def __init__(self,mongo_db=None):
