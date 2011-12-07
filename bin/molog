@@ -125,7 +125,15 @@ class MatchWorker(Process):
 			if self.ignoreLog(data) == False:
 				try:
 					feedback=self.writeElastic(data)
-					self.writeMongo(host=data['@source_host'], id=feedback['_id'], level=self.priority_map(priority = data['@fields']['priority'][0]) )
+					data['@source_host']
+					data['@fields']['priority'][0]
+					data['@fields']['timestamp8601'][0]
+					
+					self.writeMongo(	host=data['@source_host'],
+								id=feedback['_id'], 
+								level=self.priority_map(priority = data['@fields']['priority'][0]),
+								date=data['@fields']['timestamp8601'][0]
+								)
 					self.updateMonitoring(host=data['@source_host'],message=data['@message'])
 				except Exception as err:
 					self.logger.warn('I could not process record entirely. Resubmitted to queue. Reason: %s'%(err))
@@ -152,9 +160,9 @@ class MatchWorker(Process):
 	def writeElastic(self,data):
 		'''Writes the incoming data to Elasticsearch.'''
 		return self.elastic_search.insert(data)
-	def writeMongo(self,host=None,id=None,level=None):
+	def writeMongo(self,host=None,id=None,level=None,date=None):
 		'''Writes the references towards the Elasticsearch object in the DB'''
-		self.mongo_db.results.insert({'host':host,'level':level,'es_ref':id})
+		self.mongo_db.results.insert({'host':host,'level':level,'es_ref':id,'date':date})
 	def updateMonitoring(self,host=None,message=None):
 		'''Sends an update message to monitoring indicating the total warnings/criticals of a host have changed.'''
 		self.logger.debug("Send an update to monitoring for host %s. %s warning %s critical"%(host,self.mongo_db.results.find({'host':host,'level':'warning'}).count(),self.mongo_db.results.find({'host':host,'level':'critical'}).count()))
@@ -206,16 +214,23 @@ class MongoDBConnection():
 			return json.dumps({"status":"ok"})
 		else:
 			return json.dumps({"status":"nok","message":"document not valid"})
-	def queryHost(self,id=None,hostname=None,level=None):
+	def queryRecord(self,id=None,hostname=None,level=None,limit=0,sort=1):
 		if id == None:
 			query = self.__buildHostQuery(hostname=hostname,level=level)
 			list=[]
-			for result in self.db.results.find(query):
+			for result in self.db.results.find(query).limit(limit).sort('date',sort):
 				result = self.__replaceID(result)
 				message = self.es_lookup(id = result['es_ref'] )
 				result.update( {'message':message } )
 				list.append(result)
 			return json.dumps(list)				
+	def deleteRecord(self,id=None,host=None):
+		if id != None:
+			self.db.results.remove({'_id':ObjectId(id)})
+			return json.dumps({'status':'ok'})
+		if host != None:
+			self.db.results.remove({'host':host})		
+			return json.dumps({'status':'ok'})
 	def __replaceID(self,data=None):
 		if data == None or data == '':
 			return []
@@ -341,13 +356,19 @@ class RestRegex():
 		else:
 			#update an existing regex
 			return self.db.updateRegex(id = args[0], document = cherrypy.request.body.read() )		
-class RestHost():
+class RestRecord():
 	exposed=True
 	def __init__(self,db=None):
 		self.db=db
 	def GET(self,*args,**kwargs):
 		if len(args) == 0:
-			return self.db.queryHost(hostname=kwargs.get('host',None),level=kwargs.get('level',None))
+			return self.db.queryRecord(hostname=kwargs.get('host',None),level=kwargs.get('level',None),limit=int(kwargs.get('limit',0)),sort=int(kwargs.get('sort',1)))
+	def DELETE(self,*args,**kwargs):
+		if len(args) == 1:
+			return self.db.deleteRecord(id=args[0])
+		else:
+			return self.db.deleteRecord(host=kwargs.get('host',None))
+			
 class RestTotals():
 	exposed=True	
 	def __init__(self,db=None):
@@ -359,7 +380,7 @@ class RestFunctions():
 	def __init__(self,mongo_db=None):
 		self.mongo=mongo_db
 		self.regex = RestRegex(db=self.mongo)
-		self.host = RestHost(db=self.mongo)
+		self.record = RestRecord(db=self.mongo)
 		self.totals = RestTotals(db=self.mongo)
 class Server():
 	'''Server class handling process control, startup & shutdown'''
