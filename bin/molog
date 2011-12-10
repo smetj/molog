@@ -28,12 +28,12 @@ import os
 import sys
 import pymongo
 import re
-import time
 import pika
 import json
 import pyes
 import threading
 import cherrypy
+import time
 from datetime import date
 from logging.handlers import SysLogHandler
 from pymongo.objectid import ObjectId
@@ -41,8 +41,7 @@ from pika.adapters import SelectConnection
 from optparse import OptionParser
 from multiprocessing import Process, Manager, Queue
 from configobj import ConfigObj
-from time import sleep
-
+#TODO(smetj): move classes into dedicated files & import.
 
 __version__='0.1'
 
@@ -80,22 +79,23 @@ class RegexHandler():
 		pass
 class MatchWorker(Process):
 	'''Matchworker is a worker process which consumes the queue.  It can run in parallel.'''
-	def __init__(self,broker_host,broker_queue,elastic_search,mongo_db,priority_map,logger,block):
+	def __init__(self,broker_config,elastic_search,mongo_db,priority_map,msg_builder,logger,block):
 		Process.__init__(self)
-		self.broker=broker_host
-		self.queue=broker_queue
+		self.broker_config=broker_config
 		self.elastic_search=elastic_search
 		self.mongo_db=mongo_db
 		self.priority_map=priority_map
+		self.msg_builder=msg_builder
 		self.logger=logger
 		self.block=block
-				
 		self.daemon=True
 		self.start()
 	def run(self):
 		self.logger.info('Started')
 		#Setup Broker connection
-		self.parameters = pika.ConnectionParameters(self.broker)
+		credentials = pika.PlainCredentials('username', 'password')
+		credentials = pika.PlainCredentials(self.broker_config['username'],self.broker_config['password'])
+		self.parameters = pika.ConnectionParameters(self.broker_config['host'],credentials=credentials)
 		self.connection = SelectConnection(self.parameters,self.__on_connected)	
 		try:
 			self.connection.ioloop.start()
@@ -108,12 +108,19 @@ class MatchWorker(Process):
 	def __on_channel_open(self,new_channel):
 		self.channel = new_channel
 		self.__initialize()
-		self.channel.basic_consume(self.processData, queue = self.queue)
+		self.channel.basic_consume(self.processData, queue = self.broker_config['input_queue'])
 		self.channel.basic_qos(prefetch_count=1)
 	def __initialize(self):
 		self.logger.debug('Creating exchanges, queues and bindings on broker.')
-		self.channel.exchange_declare(exchange=self.queue,type='fanout',durable=True)
-		self.channel.queue_declare(queue=self.queue,durable=True)
+		
+		self.channel.exchange_declare(exchange=self.broker_config['input_exchange'],type=self.broker_config['input_exchange_type'],durable=True)
+		self.channel.exchange_declare(exchange=self.broker_config['output_exchange'],type=self.broker_config['output_exchange_type'],durable=True)
+		
+		self.channel.queue_declare(queue=self.broker_config['input_queue'],durable=True)
+		self.channel.queue_declare(queue=self.broker_config['output_queue'],durable=True)
+		
+		self.channel.queue_bind(exchange=self.broker_config['input_exchange'],queue=self.broker_config['input_queue'])
+		self.channel.queue_bind(exchange=self.broker_config['output_exchange'],queue=self.broker_config['output_queue'])
 	def processData(self,ch, method, properties, body):
 		'''Broker connection callback which does all the heavy lifting on the incoming data.'''
 		try:
@@ -165,7 +172,14 @@ class MatchWorker(Process):
 		self.mongo_db.results.insert({'host':host,'level':level,'es_ref':id,'date':date})
 	def updateMonitoring(self,host=None,message=None):
 		'''Sends an update message to monitoring indicating the total warnings/criticals of a host have changed.'''
-		self.logger.debug("Send an update to monitoring for host %s. %s warning %s critical"%(host,self.mongo_db.results.find({'host':host,'level':'warning'}).count(),self.mongo_db.results.find({'host':host,'level':'critical'}).count()))
+		warnings = self.mongo_db.results.find({'host':host,'level':'warning'}).count()
+		criticals = self.mongo_db.results.find({'host':host,'level':'critical'}).count()
+		message = self.msg_builder.nagiosService(host=host,warning=warnings,critical=criticals)
+		self.channel.basic_publish(	exchange=self.broker_config['output_queue'], 
+						routing_key='', 
+						body=message, 
+						properties=pika.BasicProperties(delivery_mode=2)
+						)
 class MongoDBConnection():
 	'''Creates a MongoDB connection object.'''
 	def __init__(self,host,logger,es_lookup=None):
@@ -389,7 +403,6 @@ class RestTotals():
 			return self.db.queryTotal(host=kwargs['host'])
 		else:
 			return self.db.queryTotal()
-		
 class RestFunctions():
 	exposed=True	
 	def __init__(self,mongo_db=None):
@@ -397,6 +410,20 @@ class RestFunctions():
 		self.regex = RestRegex(db=self.mongo)
 		self.record = RestRecord(db=self.mongo)
 		self.totals = RestTotals(db=self.mongo)
+class MessageBuilder():
+	'''Generates a message compliant with the monitoring system.'''
+	def __init__(self,config):
+		self.config=config
+	def nagiosService(self,host,warning,critical):
+		status_txt='OK'
+		status_num='0'
+		if warning > 0:
+			status_txt='Warning'
+			status_num='1'
+		if critical > 0:
+			status_txt='Critical'
+			status_num='2'
+		return "[%s] PROCESS_SERVICE_CHECK_RESULT;%s;%s;%s;%s: Host has %s warning and %s critical log entries."%(time.time(),host,self.config['service'],status_num,status_txt,warning,critical)
 class Server():
 	'''Server class handling process control, startup & shutdown'''
 	def __init__(self,config):
@@ -470,12 +497,12 @@ class Server():
 		#Create Workers
 		workers=[]
 		for worker in range (int(self.config['application']['workers'])):
-			workers.append(	MatchWorker(	broker_host=self.config['rabbitmq']['host'],
-							broker_queue=self.config['rabbitmq']['queue'],
+			workers.append(	MatchWorker(	broker_config=self.config['rabbitmq'],
 							mongo_db=MongoDBConnection(	host = self.config['mongodb']['host'],
 											logger=self.logger).db,
 							elastic_search=elastic_search,
 							priority_map=self.__priorityMap,
+							msg_builder=MessageBuilder(config=self.config['nagios']),
 							logger=self.logger,
 							block=self.lock
 							)
@@ -498,7 +525,7 @@ class Server():
 						)
 						
 		while self.lock()==True:
-			sleep(0.1)
+			time.sleep(0.1)
 		
 		self.logger.info('Exit')
 	def stop(self):
@@ -506,6 +533,7 @@ class Server():
 	def __priorityMap(self,priority):
 		'''A basic lookup function mapping priority level to either warning or critical.
 		It's a strange place for this function so we might want to move it to some sort of tools class.'''
+		#TODO(smetj): move this function to a propper class.
 		if str(priority) in self.config['priority_map']['critical'].split(','):
 			return 'critical'
 		elif str(priority) in self.config['priority_map']['warning'].split(','):
