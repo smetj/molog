@@ -64,19 +64,6 @@ class Logger():
 			scr_handler.setFormatter(self.screen_format)
 			log.addHandler(scr_handler)
 		return log
-class RegexHandler():
-	'''Class used to manipulate the regexes stored in MongoDB'''
-	def __init__(self,db,logger):
-		self.db=db
-		self.logger=logger
-		self.host_regexes=Manager().dict()
-		self.default_regexes=Manager().dict()
-	def add(self,data=None):
-		'''Adds a regex.'''
-		self.db.regexes.insert(data)
-	def update(self,id,regex):
-		'''Updates a regex to a new value.'''
-		pass
 class MatchWorker(Process):
 	'''Matchworker is a worker process which consumes the queue.  It can run in parallel.'''
 	def __init__(self,broker_config,elastic_search,mongo_db,priority_map,msg_builder,logger,block):
@@ -484,13 +471,7 @@ class Server():
 
 		#Write PID
 		self.doPID()
-		
-		#Create RegexLookup
-		regex_handler = RegexHandler(	db=MongoDBConnection(	host = self.config['mongodb']['host'],
-									logger=self.logger).db,
-						logger=self.logger
-						)
-				
+						
 		#Create ElasticSearch object
 		elastic_search= ElasticSearch(host=self.config['elasticsearch']['host'])
 		
