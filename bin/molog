@@ -80,7 +80,6 @@ class MatchWorker(Process):
 	def run(self):
 		self.logger.info('Started')
 		#Setup Broker connection
-		credentials = pika.PlainCredentials('username', 'password')
 		credentials = pika.PlainCredentials(self.broker_config['username'],self.broker_config['password'])
 		self.parameters = pika.ConnectionParameters(self.broker_config['host'],credentials=credentials)
 		self.connection = SelectConnection(self.parameters,self.__on_connected)	
@@ -410,7 +409,6 @@ class RestFunctions():
 		self.v1.totals = RestTotals(db=self.mongo)
 	def GET(self):
 		return "<a href='/v1'>API Version 1</a>"
-		
 class MessageBuilder():
 	'''Generates a message compliant with the monitoring system.'''
 	def __init__(self,config):
