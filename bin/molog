@@ -224,7 +224,16 @@ class MongoDBConnection():
 				message = self.es_lookup(id = result['es_ref'] )
 				result.update( {'message':message } )
 				list.append(result)
-			return json.dumps(list)				
+			return json.dumps(list)
+		else:
+			result = self.db.results.find_one({'_id':ObjectId(id)})
+			result = self.__replaceID(result)
+			message = self.es_lookup(id = result['es_ref'] )
+			result.update( {'message':message } )
+			return json.dumps([result])
+			
+			
+			
 	def deleteRecord(self,id=None,host=None):
 		if id != None:
 			self.db.results.remove({'_id':ObjectId(id)})
@@ -376,6 +385,8 @@ class RestRecord():
 	def GET(self,*args,**kwargs):
 		if len(args) == 0:
 			return self.db.queryRecord(hostname=kwargs.get('host',None),level=kwargs.get('level',None),limit=int(kwargs.get('limit',0)),sort=int(kwargs.get('sort',1)))
+		else:
+			return self.db.queryRecord(id=args[0])
 	def DELETE(self,*args,**kwargs):
 		if len(args) == 1:
 			return self.db.deleteRecord(id=args[0])

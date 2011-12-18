@@ -3,7 +3,7 @@
 #
 #       molog_cli
 #       
-#       Copyright 2011 Jelle <jelle@indigo>
+#       Copyright 2011 Jelle Smet <development@smetj.net>
 #       
 #       This program is free software; you can redistribute it and/or modify
 #       it under the terms of the GNU General Public License as published by
@@ -22,7 +22,12 @@
 #       
 #       
 from optparse import OptionParser
+from operator import itemgetter
 import sys
+import urllib2
+import cmd
+import json
+import pprint
 
 __version__ = '0.1'
 
@@ -58,16 +63,119 @@ molog_cli is distributed under the Terms of the GNU General Public License Versi
 For more information please visit http://www.smetj.net/Molog/
 ''')
 
-class Query():
+class QueryRecords():
 	def __init__(self):
 		pass
-class Command():
-	def __init__(self):
+class APICall():
+	def __init__(self,address,port,username,password,version="v1"):
+		self.opener = urllib2.build_opener(urllib2.HTTPHandler)
+		self.base_url = "http://%s:%s/%s/"%(address,port,version)
+	def request(self):
 		pass
+	def GET(self,url):
+		url = self.base_url+url
+		print 'GET %s'%(url)
+		request = urllib2.Request(url)
+		request.get_method = lambda: 'GET'
+		return self.convert(self.opener.open(request).readlines())
+	def PUT(self,data):
+		request.add_header('Content-Type', 'your/contenttype')
+	def convert(self,data):
+		return json.loads(''.join(data))
+
+		
+class Command(cmd.Cmd):
+	def __init__(self,api):
+		cmd.Cmd.__init__(self)
+		self.api = api
+	def do_record(self,data):
+		data = data.split()
+
+		if len(data) == 0:
+			self.column_record(self.api.GET(url='record'))
+		else:
+			command = data[0]
+			filter = ' '.join(data[1:])
+			if command == 'get':
+				if '=' in filter:
+					self.column_record(self.api.GET(url='record?'+filter))
+				else:
+					self.column_record(self.api.GET(url='record/'+filter))
+			elif data[0] == 'put':
+				pass
+			else:
+				print "Unknown command."
+				
+			
+	def do_EOF(self, line):
+		return True
+	def format_as_table(self,data,keys,header=None,sort_by_key=None,sort_order_reverse=False):
+		"""
+		Shamelessly stolen from http://www.calazan.com/python-function-for-displaying-a-list-of-dictionaries-in-table-format
+		Takes a list of dictionaries, formats the data, and returns
+		the formatted data as a text table.
+
+		Required Parameters:
+			data - Data to process (list of dictionaries). (Type: List)
+			keys - List of keys in the dictionary. (Type: List)
+
+		Optional Parameters:
+			header - The table header. (Type: List)
+			sort_by_key - The key to sort by. (Type: String)
+			sort_order_reverse - Default sort order is ascending, if
+				True sort order will change to descending. (Type: Boolean)
+		"""
+		# Sort the data if a sort key is specified (default sort order
+		# is ascending)
+		if sort_by_key:
+			data = sorted(data,
+						  key=itemgetter(sort_by_key),
+						  reverse=sort_order_reverse)
+
+		# If header is not empty, add header to data
+		if header:
+			# Get the length of each header and create a divider based
+			# on that length
+			header_divider = []
+			for name in header:
+				header_divider.append('-' * len(name))
+
+			# Create a list of dictionary from the keys and the header and
+			# insert it at the beginning of the list. Do the same for the
+			# divider and insert below the header.
+			header_divider = dict(zip(keys, header_divider))
+			data.insert(0, header_divider)
+			header = dict(zip(keys, header))
+			data.insert(0, header)
+
+		column_widths = []
+		for key in keys:
+			column_widths.append(max(len(str(column[key])) for column in data))
+
+		# Create a tuple pair of key and the associated column width for it
+		key_width_pair = zip(keys, column_widths)
+
+		format = ('%-*s ' * len(keys)).strip() + '\n'
+		formatted_data = ''
+		for element in data:
+			data_to_format = []
+			# Create a tuple that will be used for the formatting in
+			# width, value format
+			for pair in key_width_pair:
+				data_to_format.append(pair[1])
+				data_to_format.append(element[pair[0]])
+			formatted_data += format % tuple(data_to_format)
+		return formatted_data
+	def column_record(self,list):
+		header = [ 'Date', 'Host', 'ID', 'Level', 'Message' ]
+		keys = [ 'date','host','id','level','message' ]
+		print self.format_as_table(list,keys,header,'date',False)
 def main():
+	#TODO(smetj): replace OptionParser by argparse
 	parser = OptionParser()
 	help=Help()
 	parser.add_option("--host", dest="host", default="127.0.0.1", type="string", help="IPaddress or hostname of Molog.")
+	parser.add_option("--port", dest="port", default="5669", type="string", help="The port number on which MoLog listens.")
 	parser.add_option("--username", dest="username", default="guest", type="string", help="Username to connect to Molog API")	
 	parser.add_option("--password", dest="password", default="guest", type="string", help="Password to connect to Molog API")
 	parser.add_option("--api", dest="api", default="v1", type="string", help="The rest API version to use.")	
@@ -77,7 +185,15 @@ def main():
 		help.do()
 		sys.exit(0)
 	elif cli_actions[0] == 'start':
-		command = Command()
+		api_call = APICall(
+					address		= cli_options.host,
+					port		= cli_options.port,
+					username 	= cli_options.username,
+					password 	= cli_options.password,
+					version		= cli_options.api
+					)
+	
+		Command(api=api_call).cmdloop()
 		print "molog_cli has exit."
 	else:
 		help.do()
