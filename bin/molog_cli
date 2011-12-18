@@ -171,8 +171,24 @@ class Command(cmd.Cmd):
 				print self.api.DELETE(url='regex?'+filter)
 			else:
 				print self.api.DELETE(url='regex/'+filter)
-				
+	def do_totals(self,data):
+		'''Returns the totals.
+		(Cmd) totals sub_command parameter
 		
+		Sub commands available:
+		
+			get [query]
+			
+		'''
+		data = data.split()
+		
+		command = data[0]
+		filter = ' '.join(data[1:])
+		if command == 'get':
+			if len(data) == 1:
+				print self.column_totals(self.api.GET(url='totals'))
+			else:
+				print self.column_totals(self.api.GET(url='totals/'+filter))		
 	def do_EOF(self, line):
 		return True
 	def format_as_table(self,data,keys,header=None,sort_by_key=None,sort_order_reverse=False):
@@ -241,6 +257,10 @@ class Command(cmd.Cmd):
 		header = [ 'order', 'type', 'id', 'tags', 'regexes' ]
 		keys = [ 'order', 'type', 'id', 'tags', 'regexes' ]
 		return self.format_as_table(list,keys,header,None,False)
+	def column_totals(self,list):
+		header = [ 'host', 'warning', 'critical' ]
+		keys = [ 'host', 'warning', 'critical' ]
+		return self.format_as_table(list,keys,header,'host',False)
 def main():
 	#TODO(smetj): replace OptionParser by argparse
 	parser = OptionParser()

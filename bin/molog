@@ -242,14 +242,16 @@ class MongoDBConnection():
 		if host ==None:
 			list=[]
 			for host in sorted(self.db.results.distinct("host")):
-				list.append({	host :{'warning': self.db.results.find({'host':host,'level':'warning'}).count(),
-						'critical': self.db.results.find({'host':host,'level':'critical'}).count()
-						}})
+				list.append({	'host':host,
+						'warning':self.db.results.find({'host':host,'level':'warning'}).count(),
+						'critical':self.db.results.find({'host':host,'level':'critical'}).count()
+						})
 			return json.dumps(list)
 		else:
-			return json.dumps([{	host :{'warning': self.db.results.find({'host':host,'level':'warning'}).count(),
-						'critical': self.db.results.find({'host':host,'level':'critical'}).count()
-						}}])
+			return json.dumps([{	'host':host,
+						'warning':self.db.results.find({'host':host,'level':'warning'}).count(),
+						'critical':self.db.results.find({'host':host,'level':'critical'}).count()
+						}])
 	def __replaceID(self,data=None):
 		if data == None or data == '':
 			return []
@@ -394,10 +396,10 @@ class RestTotals():
 	def __init__(self,db=None):
 		self.db=db
 	def GET(self,*args,**kwargs):
-		if kwargs.has_key('host'):
-			return self.db.queryTotal(host=kwargs.get('host',None))
-		else:
+		if len(args) == 0:
 			return self.db.queryTotal()
+		else:			
+			return self.db.queryTotal(host=args[0])
 class V1():
 	exposed=True
 	'''Dummy class to version REST api'''
