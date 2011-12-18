@@ -7,7 +7,7 @@
 #       
 #       This program is free software; you can redistribute it and/or modify
 #       it under the terms of the GNU General Public License as published by
-#       the Free Software Foundation; either version 2 of the License, or
+#       the Free Software Foundation; either version 3 of the License, or
 #       (at your option) any later version.
 #       
 #       This program is distributed in the hope that it will be useful,
@@ -43,7 +43,7 @@ from multiprocessing import Process, Manager, Queue
 from configobj import ConfigObj
 #TODO(smetj): move classes into dedicated files & import.
 
-__version__='0.1'
+__version__='0.2.1'
 
 class Logger():
 	'''Creates a logger class and writes to screen or syslog.'''
@@ -534,17 +534,58 @@ class Server():
 			return 'warning'
 		else:
 			return 'ok'
+class Help():
+	'''Help function'''
+	def __init__(self):
+		print ('MoLog %s Copyright 2011 by Jelle Smet <development@smetj.net>' %(__version__))
+		print ('''
+Description: 
+
+	Molog is a framework which consumes and matches logs from RabbitMQ and sends updates to Nagios and ElasticSearch.
+
+Usage: 
+
+	molog action --config configfile
+
+
+	Actions:
+	
+		start		Starts MoLog into the background.
+		debug		Starts MoLog into the foregound.
+		stop		Stops MoLog.
+		
+		
+	Parameters:
+	
+		config		The location of the configuration file.
+
+
+MoLog is distributed under the Terms of the GNU General Public License Version 3. (http://www.gnu.org/licenses/gpl-3.0.html)
+
+For more information please visit http://www.smetj.net/Molog/
+''')
+
+
+		
 if __name__ == '__main__':
 	parser = OptionParser()
 	parser.add_option("--config", dest="config", default="main.conf", type="string", help="The location of the config file.")	
 	(cli_options,cli_actions)=parser.parse_args()	
+	
 	try:
+		if len(cli_actions ) == 0:
+			Help()
+			sys.exit(1)
+
 		server=Server(config = cli_options.config)
 		if cli_actions[0] == 'start':
 			with daemon.DaemonContext():
 				server.start()
 		elif cli_actions[0] == 'debug':
 			server.start()
+		else:
+			Help()
+			sys.exit(1)
 #	except Exception as err:
 #		print str(err)
 	except KeyboardInterrupt:
