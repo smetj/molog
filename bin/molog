@@ -185,7 +185,7 @@ class MongoDBConnection():
 				list.append(regex)				
 			return json.dumps(list)
 		else:
-			return json.dumps(self.__replaceID(data=self.db.regexes.find_one( { '_id' : ObjectId(id) } )))
+			return json.dumps([self.__replaceID(data=self.db.regexes.find_one( { '_id' : ObjectId(id) } ))])
 	def removeRegex(self,id=None,tags=None):
 		if id == None:
 			query = self.__buildTagQuery(tags=tags)
