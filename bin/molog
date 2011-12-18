@@ -571,7 +571,6 @@ if __name__ == '__main__':
 	parser = OptionParser()
 	parser.add_option("--config", dest="config", default="main.conf", type="string", help="The location of the config file.")	
 	(cli_options,cli_actions)=parser.parse_args()	
-	
 	try:
 		if len(cli_actions ) == 0:
 			Help()
@@ -581,7 +580,6 @@ if __name__ == '__main__':
 			with daemon.DaemonContext():
 				server.start()
 		elif cli_actions[0] == 'debug':
-			qsdf
 			server.start()
 		else:
 			Help()
