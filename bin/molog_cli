@@ -81,9 +81,7 @@ class APICall():
 	def PUT(self,data):
 		request.add_header('Content-Type', 'your/contenttype')
 	def convert(self,data):
-		return json.loads(''.join(data))
-
-		
+		return json.loads(''.join(data))		
 class Command(cmd.Cmd):
 	def __init__(self,api):
 		cmd.Cmd.__init__(self)
@@ -155,6 +153,7 @@ class Command(cmd.Cmd):
 		# Create a tuple pair of key and the associated column width for it
 		key_width_pair = zip(keys, column_widths)
 
+		#format = ('%-*s ' * len(keys)).strip() + '\n'
 		format = ('%-*s ' * len(keys)).strip() + '\n'
 		formatted_data = ''
 		for element in data:
@@ -169,7 +168,7 @@ class Command(cmd.Cmd):
 	def column_record(self,list):
 		header = [ 'Date', 'Host', 'ID', 'Level', 'Message' ]
 		keys = [ 'date','host','id','level','message' ]
-		print self.format_as_table(list,keys,header,'date',False)
+		print self.format_as_table(list,keys,header,None,False)
 def main():
 	#TODO(smetj): replace OptionParser by argparse
 	parser = OptionParser()
