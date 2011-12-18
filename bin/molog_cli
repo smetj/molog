@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-#       untitled.py
+#       molog_cli
 #       
 #       Copyright 2011 Jelle <jelle@indigo>
 #       
 #       This program is free software; you can redistribute it and/or modify
 #       it under the terms of the GNU General Public License as published by
-#       the Free Software Foundation; either version 2 of the License, or
+#       the Free Software Foundation; either version 3 of the License, or
 #       (at your option) any later version.
 #       
 #       This program is distributed in the hope that it will be useful,
@@ -22,13 +22,68 @@
 #       
 #       
 from optparse import OptionParser
+import sys
 
+__version__ = '0.1'
 
+class Help():
+	def __init__(self):
+		pass
+	def do(self):
+		print ('molog_cli %s Copyright 2011 by Jelle Smet <development@smetj.net>' %(__version__))
+		print ('''
+Description: 
+
+	molog_cli is a interactive command interface to the MoLog REST API.
+
+Usage: 
+
+	molog_cli action [--host hostname] [--username username] [--password password] [--api version]
+	
+	Actions:
+	
+		start			Starts the interactive prompt.
+		help			Shows help
+
+			
+	Parameters:
+	
+		--host			The hostname or IP of the server on which MoLog is running.
+		--username		The username to login to MoLog.
+		--password		The password to login to MoLog.
+		--api			API version to use.
+
+molog_cli is distributed under the Terms of the GNU General Public License Version 3. (http://www.gnu.org/licenses/gpl-3.0.html)
+
+For more information please visit http://www.smetj.net/Molog/
+''')
+
+class Query():
+	def __init__(self):
+		pass
+class Command():
+	def __init__(self):
+		pass
 def main():
 	parser = OptionParser()
+	help=Help()
 	parser.add_option("--host", dest="host", default="127.0.0.1", type="string", help="IPaddress or hostname of Molog.")
 	parser.add_option("--username", dest="username", default="guest", type="string", help="Username to connect to Molog API")	
 	parser.add_option("--password", dest="password", default="guest", type="string", help="Password to connect to Molog API")
+	parser.add_option("--api", dest="api", default="v1", type="string", help="The rest API version to use.")	
+	(cli_options,cli_actions)=parser.parse_args()	
+	
+	if len(cli_actions) == 0 or cli_actions[0] == 'help':
+		help.do()
+		sys.exit(0)
+	elif cli_actions[0] == 'start':
+		command = Command()
+		print "molog_cli has exit."
+	else:
+		help.do()
+		sys.exit(0)
+			
+	
 	return 0
 
 if __name__ == '__main__':
