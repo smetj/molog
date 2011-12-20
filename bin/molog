@@ -39,7 +39,7 @@ from logging.handlers import SysLogHandler
 from pymongo.objectid import ObjectId
 from pika.adapters import SelectConnection
 from optparse import OptionParser
-from multiprocessing import Process, Manager, Queue
+from multiprocessing import Process, Manager, Queue, Lock
 from configobj import ConfigObj
 #TODO(smetj): move classes into dedicated files & import.
 
@@ -66,13 +66,13 @@ class Logger():
 		return log
 class MatchWorker(Process):
 	'''Matchworker is a worker process which consumes the queue.  It can run in parallel.'''
-	def __init__(self,broker_config,elastic_search,mongo_db,priority_map,msg_builder,logger,block):
+	def __init__(self,broker_config,elastic_search,mongo_data_api,priority_map,logger,block):
 		Process.__init__(self)
 		self.broker_config=broker_config
 		self.elastic_search=elastic_search
-		self.mongo_db=mongo_db
+		self.mongo_db=mongo_data_api.db
+		self.generateHostStatus=mongo_data_api.generateHostStatus
 		self.priority_map=priority_map
-		self.msg_builder=msg_builder
 		self.logger=logger
 		self.block=block
 		self.daemon=True
@@ -158,19 +158,42 @@ class MatchWorker(Process):
 		self.mongo_db.results.insert({'host':host,'level':level,'es_ref':id,'date':date})
 	def updateMonitoring(self,host=None,message=None):
 		'''Sends an update message to monitoring indicating the total warnings/criticals of a host have changed.'''
-		warnings = self.mongo_db.results.find({'host':host,'level':'warning'}).count()
-		criticals = self.mongo_db.results.find({'host':host,'level':'critical'}).count()
-		message = self.msg_builder.nagiosService(host=host,warning=warnings,critical=criticals)
+		self.logger.debug('Sending update to Nagios')
+		message = self.generateHostStatus(host=host)
 		self.channel.basic_publish(	exchange=self.broker_config['output_queue'], 
 						routing_key='', 
 						body=message, 
 						properties=pika.BasicProperties(delivery_mode=2)
 						)
-class MongoDBConnection():
+class SimpleProducer():
+	'''Sends Nagios updates to the RabbitMQ broker whenever results of a host change.'''
+	def __init__(self,broker_config,logger):
+		self.broker_config=broker_config
+		credentials = pika.PlainCredentials(self.broker_config['username'],self.broker_config['password'])
+		self.parameters = pika.ConnectionParameters(self.broker_config['host'],credentials=credentials)
+		connection = pika.BlockingConnection(self.parameters)
+		self.channel = connection.channel()
+		self.logger = logger
+		self.lock = Lock()
+	def publish(self,data=None):
+		self.lock.acquire()
+		self.logger.debug("Sending %s to monitoring."%(data))
+		self.channel.basic_publish(	exchange=self.broker_config['output_queue'],
+						routing_key='',
+						body=data,
+						properties=pika.BasicProperties(delivery_mode=2)
+						)
+		self.lock.release()
+class MongoDataAPI():
 	'''Creates a MongoDB connection object.'''
-	def __init__(self,host,logger,es_lookup=None):
+	def __init__(self,host,logger,nagios_config=None,rabbitmq_config=None,es_lookup=None):
 		self.connection=pymongo.Connection(host)
 		self.db = self.connection.molog
+		
+		self.msg_builder=MessageBuilder(config = nagios_config)
+		self.update_monitoring = SimpleProducer(	broker_config=rabbitmq_config,
+								logger = logger
+							)
 		self.es_lookup=es_lookup
 		self.logger=logger
 	def __checkIntegrity(self):
@@ -233,11 +256,15 @@ class MongoDBConnection():
 			return json.dumps([result])			
 	def deleteRecord(self,id=None,host=None):
 		if id != None:
+			host_name = self.db.results.find_one({'_id':ObjectId(id)})['host']
 			self.db.results.remove({'_id':ObjectId(id)})
-			return json.dumps({'status':'ok'})
 		if host != None:
+			host_name=host
 			self.db.results.remove({'host':host})		
-			return json.dumps({'status':'ok'})
+		if self.update_monitoring != False:
+			message = self.generateHostStatus(host=host_name)
+			self.update_monitoring.publish(data=message)
+		return json.dumps({'status':'ok'})
 	def queryTotal(self,host=None):
 		if host ==None:
 			list=[]
@@ -252,6 +279,10 @@ class MongoDBConnection():
 						'warning':self.db.results.find({'host':host,'level':'warning'}).count(),
 						'critical':self.db.results.find({'host':host,'level':'critical'}).count()
 						}])
+	def generateHostStatus(self,host=None):
+		warnings = self.db.results.find({'host':host,'level':'warning'}).count()
+		criticals = self.db.results.find({'host':host,'level':'critical'}).count()
+		return self.msg_builder.nagiosService(host=host,warning=warnings,critical=criticals)	
 	def __replaceID(self,data=None):
 		if data == None or data == '':
 			return []
@@ -358,48 +389,48 @@ class WebServer(threading.Thread):
 		self.logger.info("WebServer thread stopped.")
 class RestRegex():
 	exposed=True
-	def __init__(self,db=None):
-		self.db=db
+	def __init__(self,mongo_data_api=None):
+		self.mongo_data_api=mongo_data_api
 	def GET(self,*args,**kwargs):
 		if len(args) == 0:
-			return self.db.queryRegex(tags=kwargs.get('tags',None))
+			return self.mongo_data_api.queryRegex(tags=kwargs.get('tags',None))
 		else:
-			return self.db.queryRegex(id=args[0])
+			return self.mongo_data_api.queryRegex(id=args[0])
 	def DELETE(self,*args,**kwargs):
 		if len(args) == 0:
-			return self.db.removeRegex(tags=kwargs.get('tags',None))
+			return self.mongo_data_api.removeRegex(tags=kwargs.get('tags',None))
 		else:
-			return self.db.removeRegex(id=args[0])
+			return self.mongo_data_api.removeRegex(id=args[0])
 	def POST(self,*args,**kwargs):
 		if len(args) == 0:
 			#insert a regex
-			return self.db.insertRegex(document = cherrypy.request.body.read() )
+			return self.mongo_data_api.insertRegex(document = cherrypy.request.body.read() )
 		else:
 			#update an existing regex
-			return self.db.updateRegex(id = args[0], document = cherrypy.request.body.read() )		
+			return self.mongo_data_api.updateRegex(id = args[0], document = cherrypy.request.body.read() )		
 class RestRecord():
 	exposed=True
-	def __init__(self,db=None):
-		self.db=db
+	def __init__(self,mongo_data_api=None):
+		self.mongo_data_api=mongo_data_api
 	def GET(self,*args,**kwargs):
 		if len(args) == 0:
-			return self.db.queryRecord(hostname=kwargs.get('host',None),level=kwargs.get('level',None),limit=int(kwargs.get('limit',0)),sort=int(kwargs.get('sort',-1)))
+			return self.mongo_data_api.queryRecord(hostname=kwargs.get('host',None),level=kwargs.get('level',None),limit=int(kwargs.get('limit',0)),sort=int(kwargs.get('sort',-1)))
 		else:
-			return self.db.queryRecord(id=args[0])
+			return self.mongo_data_api.queryRecord(id=args[0])
 	def DELETE(self,*args,**kwargs):
 		if len(args) == 1:
-			return self.db.deleteRecord(id=args[0])
+			return self.mongo_data_api.deleteRecord(id=args[0])
 		else:
-			return self.db.deleteRecord(host=kwargs.get('host',None))
+			return self.mongo_data_api.deleteRecord(host=kwargs.get('host',None))
 class RestTotals():
 	exposed=True	
-	def __init__(self,db=None):
-		self.db=db
+	def __init__(self,mongo_data_api=None):
+		self.mongo_data_api=mongo_data_api
 	def GET(self,*args,**kwargs):
 		if len(args) == 0:
-			return self.db.queryTotal()
+			return self.mongo_data_api.queryTotal()
 		else:			
-			return self.db.queryTotal(host=args[0])
+			return self.mongo_data_api.queryTotal(host=args[0])
 class V1():
 	exposed=True
 	'''Dummy class to version REST api'''
@@ -410,13 +441,13 @@ class V1():
 		return str(self.content)
 class RestFunctions():
 	exposed=True	
-	def __init__(self,mongo_db=None):
-		self.mongo=mongo_db
+	def __init__(self,mongo_data_api=None):
+		self.mongo_data_api=mongo_data_api
 		#Future versions of REST apis can go here?
 		self.v1=V1()
-		self.v1.regex = RestRegex(db=self.mongo)
-		self.v1.record = RestRecord(db=self.mongo)
-		self.v1.totals = RestTotals(db=self.mongo)
+		self.v1.regex = RestRegex(mongo_data_api=self.mongo_data_api)
+		self.v1.record = RestRecord(mongo_data_api=self.mongo_data_api)
+		self.v1.totals = RestTotals(mongo_data_api=self.mongo_data_api)
 	def GET(self):
 		return "<a href='/v1'>API Version 1</a>"
 class MessageBuilder():
@@ -501,18 +532,23 @@ class Server():
 		#Create Workers
 		workers=[]
 		for worker in range (int(self.config['application']['workers'])):
+			#Create worker object 
 			workers.append(	MatchWorker(	broker_config=self.config['rabbitmq'],
-							mongo_db=MongoDBConnection(	host = self.config['mongodb']['host'],
-											logger=self.logger).db,
+							mongo_data_api=MongoDataAPI(	host = self.config['mongodb']['host'],
+											nagios_config=self.config['nagios'],
+											rabbitmq_config=self.config['rabbitmq'],										
+											logger=self.logger),
 							elastic_search=elastic_search,
 							priority_map=self.__priorityMap,
-							msg_builder=MessageBuilder(config=self.config['nagios']),
 							logger=self.logger,
 							block=self.lock
 							)
-					)
-		rest_functions = RestFunctions	(	mongo_db = MongoDBConnection(	host = self.config['mongodb']['host'],
+					)	
+		
+		rest_functions = RestFunctions	(	mongo_data_api = MongoDataAPI(	host = self.config['mongodb']['host'],
 											es_lookup = elastic_search.messageMap,
+											nagios_config=self.config['nagios'],
+											rabbitmq_config=self.config['rabbitmq'],
 											logger=self.logger)
 							)
 		
@@ -594,12 +630,12 @@ if __name__ == '__main__':
 		else:
 			Help()
 			sys.exit(1)
-	except Exception as err:
-		print ("An error has been encountered. Please file a bugreport to https://github.com/smetj/molog/issues containing following information: ")
-		print
-		print ("\t- The content of your config file")
-		print ("\t- This piece of information: %s"%(str(err)))
-		print
+#	except Exception as err:
+#		print ("An error has been encountered. Please file a bugreport to https://github.com/smetj/molog/issues containing following information: ")
+#		print
+#		print ("\t- The content of your config file")
+#		print ("\t- This piece of information: %s"%(str(err)))
+#		print
 	except KeyboardInterrupt:
 		server.stop()
 		server.deletePID()
