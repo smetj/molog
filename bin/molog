@@ -630,12 +630,12 @@ if __name__ == '__main__':
 		else:
 			Help()
 			sys.exit(1)
-#	except Exception as err:
-#		print ("An error has been encountered. Please file a bugreport to https://github.com/smetj/molog/issues containing following information: ")
-#		print
-#		print ("\t- The content of your config file")
-#		print ("\t- This piece of information: %s"%(str(err)))
-#		print
+	except Exception as err:
+		print ("An error has been encountered. Please file a bugreport to https://github.com/smetj/molog/issues containing following information: ")
+		print
+		print ("\t- The content of your config file")
+		print ("\t- This piece of information: %s"%(str(err)))
+		print
 	except KeyboardInterrupt:
 		server.stop()
 		server.deletePID()
