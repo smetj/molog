@@ -186,15 +186,19 @@ class SimpleProducer():
 		self.lock.release()
 class MongoDataAPI():
 	'''Creates a MongoDB connection object.'''
-	def __init__(self,host,logger,nagios_config=None,rabbitmq_config=None,es_lookup=None):
+	def __init__(self,host,logger,nagios_config=None,rabbitmq_config=None,es_config=None):
 		self.connection=pymongo.Connection(host)
 		self.db = self.connection.molog
 		
+		#MessageBuilder constructs messages we want to send back to Nagios.
 		self.msg_builder=MessageBuilder(config = nagios_config)
+		
+		#SimpleProducer sends MessageBuilder messages to the broker infrastructure.
 		self.update_monitoring = SimpleProducer(	broker_config=rabbitmq_config,
 								logger = logger
 							)
-		self.es_lookup=es_lookup
+		#ElasticSearch handles ElasticSearch IO
+		self.es_lookup=ElasticSearch(host=es_config['host'])
 		self.logger=logger
 	def __checkIntegrity(self):
 		pass
@@ -244,7 +248,7 @@ class MongoDataAPI():
 			list=[]
 			for result in self.db.results.find(query).limit(limit).sort('date',sort):
 				result = self.__replaceID(result)
-				message = self.es_lookup(id = result['es_ref'] )
+				message = self.es_lookup.messageMap(id = result['es_ref'] )
 				result.update( {'message':message } )
 				list.append(result)
 			return json.dumps(list)
@@ -527,7 +531,7 @@ class Server():
 		self.doPID()
 						
 		#Create ElasticSearch object
-		elastic_search= ElasticSearch(host=self.config['elasticsearch']['host'])
+		
 		
 		#Create Workers
 		workers=[]
@@ -535,10 +539,11 @@ class Server():
 			#Create worker object 
 			workers.append(	MatchWorker(	broker_config=self.config['rabbitmq'],
 							mongo_data_api=MongoDataAPI(	host = self.config['mongodb']['host'],
+											es_config = self.config['elasticsearch'],
 											nagios_config=self.config['nagios'],
 											rabbitmq_config=self.config['rabbitmq'],										
 											logger=self.logger),
-							elastic_search=elastic_search,
+							elastic_search=ElasticSearch(host=self.config['elasticsearch']['host']),
 							priority_map=self.__priorityMap,
 							logger=self.logger,
 							block=self.lock
@@ -546,7 +551,7 @@ class Server():
 					)	
 		
 		rest_functions = RestFunctions	(	mongo_data_api = MongoDataAPI(	host = self.config['mongodb']['host'],
-											es_lookup = elastic_search.messageMap,
+											es_config = self.config['elasticsearch'],
 											nagios_config=self.config['nagios'],
 											rabbitmq_config=self.config['rabbitmq'],
 											logger=self.logger)
