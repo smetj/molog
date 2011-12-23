@@ -608,7 +608,7 @@ Usage:
 		
 	Parameters:
 	
-		config		The location of the configuration file.
+		--config	The location of the configuration file.
 
 
 MoLog is distributed under the Terms of the GNU General Public License Version 3. (http://www.gnu.org/licenses/gpl-3.0.html)

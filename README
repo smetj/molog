@@ -16,3 +16,7 @@ Molog is a framework which consumes and matches logs from RabbitMQ and sends upd
 * Forwards and stores all messages into ElasticSearch.
 * Stores references of ElasticSearch records into a MongoDB instance.
 * Provides REST API for querying and manipulating references and regexes.
+
+Currently implemented REST functionality:
+
+
