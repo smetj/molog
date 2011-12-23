@@ -158,19 +158,21 @@ class Command(cmd.Cmd):
 					- host=
 		'''
 		data = data.split()
-		
-		command = data[0]
-		filter = ' '.join(data[1:])
-		if command == 'get':
-			if '=' in filter:
-				print self.column_regex(self.api.GET(url='regex?'+filter))
-			else:
-				print self.column_regex(self.api.GET(url='regex/'+filter))
-		elif command =='delete':
-			if '=' in filter:
-				print self.api.DELETE(url='regex?'+filter)
-			else:
-				print self.api.DELETE(url='regex/'+filter)
+		if len(data) == 0:
+			print self.column_regex(self.api.GET(url='regex/'))
+		else:		
+			command = data[0]
+			filter = ' '.join(data[1:])
+			if command == 'get':
+				if '=' in filter:
+					print self.column_regex(self.api.GET(url='regex?'+filter))
+				else:
+					print self.column_regex(self.api.GET(url='regex/'+filter))
+			elif command =='delete':
+				if '=' in filter:
+					print self.api.DELETE(url='regex?'+filter)
+				else:
+					print self.api.DELETE(url='regex/'+filter)
 	def do_totals(self,data):
 		'''Returns the totals.
 		(Cmd) totals sub_command parameter
@@ -182,13 +184,17 @@ class Command(cmd.Cmd):
 		'''
 		data = data.split()
 		
-		command = data[0]
-		filter = ' '.join(data[1:])
-		if command == 'get':
-			if len(data) == 1:
-				print self.column_totals(self.api.GET(url='totals'))
-			else:
-				print self.column_totals(self.api.GET(url='totals/'+filter))		
+		if len(data) == 0:
+			print self.column_totals(self.api.GET(url='totals'))
+		else:
+		
+			command = data[0]
+			filter = ' '.join(data[1:])
+			if command == 'get':
+				if len(data) == 1:
+					print self.column_totals(self.api.GET(url='totals'))
+				else:
+					print self.column_totals(self.api.GET(url='totals/'+filter))		
 	def do_EOF(self, line):
 		return True
 	def format_as_table(self,data,keys,header=None,sort_by_key=None,sort_order_reverse=False):
