@@ -63,9 +63,6 @@ molog_cli is distributed under the Terms of the GNU General Public License Versi
 For more information please visit http://www.smetj.net/Molog/
 ''')
 
-class QueryRecords():
-	def __init__(self):
-		pass
 class APICall():
 	def __init__(self,address,port,username,password,version="v1"):
 		self.opener = urllib2.build_opener(urllib2.HTTPHandler)
