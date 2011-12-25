@@ -3,7 +3,7 @@
  /    \ / _ \ / /   / _ \ / _` |
 / /\/\ \ (_) / /___| (_) | (_| |
 \/    \/\___/\____/ \___/ \__, |
-                          |___/   Experimental Branch.
+                          |___/
 
 
 Molog is a framework which consumes and matches logs from RabbitMQ and sends updates to Nagios and ElasticSearch.
