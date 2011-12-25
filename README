@@ -26,7 +26,7 @@ OriginatingSource -> SyslogServer -> LogStash -> RabbitMQ -> Molog -> RabbitMQ
                                                                |         |
                                                                |         |-> Krolyk -> Nagios
                                                                |
-                                                               |-> LogStash
+                                                               |-> ElasticSearch
 
 
 A description of the REST interface:
