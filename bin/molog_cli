@@ -159,6 +159,12 @@ class Command(cmd.Cmd):
 			
 				Valid query parameters are:
 					- host=
+			
+			post json_document
+			
+			Inserts new or updates an existing regex definition. Make sure you feed a correct json document.
+			It should have a similar structure:
+				{"tags":["linux","development"],"regexes":{"message":".*?cheese.*"},"order":"3","type":".*"}
 		'''
 		data = data.split()
 		if len(data) == 0:
@@ -177,7 +183,14 @@ class Command(cmd.Cmd):
 				else:
 					print self.api.DELETE(url='regex/'+filter)
 			elif command =='post':
-				print self.api.POST(url='regex',data=filter)
+				json_data = json.loads(filter)
+				if json_data.has_key('id'):
+					id = json_data['id']
+					del(json_data['id'])
+					print self.api.POST(url='regex/%s'%(id),data=json.dumps(json_data))
+					
+				else:
+					print self.api.POST(url='regex',data=filter)
 	def do_totals(self,data):
 		'''Returns the totals.
 		(Cmd) totals sub_command parameter
@@ -303,7 +316,6 @@ def main():
 			
 	
 	return 0
-
 if __name__ == '__main__':
 	main()
 
