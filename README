@@ -4,7 +4,7 @@
 / /\/\ \ (_) / /___| (_) | (_| |
 \/    \/\___/\____/ \___/ \__, |
                           |___/
-                    Experimental
+                  Wishbone-based
 
 Molog is processing layer for a scalable logging infrastructure which consumes LogStash processed logs from RabbitMQ and 
 sends updates to Nagios and ElasticSearch.
@@ -16,6 +16,5 @@ Features:
     * Positive and negative regex mathing.
 
 
-This experimental version of MoLog is a complete rewrite based upon the Wishbone library.
+This unfinished version of MoLog is a complete rewrite based upon the Wishbone library.
 The motivation of this rewrite is to have cleaner, more modular code and to have more functionality.
-
