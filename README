@@ -4,157 +4,18 @@
 / /\/\ \ (_) / /___| (_) | (_| |
 \/    \/\___/\____/ \___/ \__, |
                           |___/
-
+                    Experimental
 
 Molog is processing layer for a scalable logging infrastructure which consumes LogStash processed logs from RabbitMQ and 
 sends updates to Nagios and ElasticSearch.
 
-* A stand alone daemon with configurable parallel workers.
-* Workers consume LogStash processed messages from RabbitMQ and perform ignore regex matching on them.
-* Regex rules can be applied to all LogStash generated fields.
-* Sends Nagios passive check results back to RabbitMQ.
-* Nagios check results can be consumed from RabbitMQ into Nagios using Krolyk.
-* Forwards and stores all messages to ElasticSearch.
-* Only stores references to ElasticSearch records in a MongoDB instance.
-* Provides REST API for querying and manipulating references and regexes.
-* Includes molog_cli an interactive REST client to manipulate records, matches and regexes.
+Features:
+
+    * Wishbone based
+    * Ability to chain named regular expressions.
+    * Positive and negative regex mathing.
 
 
-A typical workflow could be:
-
-OriginatingSource -> SyslogServer -> LogStash -> RabbitMQ -> Molog -> RabbitMQ
-                                                               |         |
-                                                               |         |-> Krolyk -> Nagios
-                                                               |
-                                                               |-> ElasticSearch (+LogStash interface)
-
-
-A description of the REST interface:
-
-Version 1.0
-
-The intention is to make this API comform to the REST standards. If you find any deviations to the standards please submit a bugreport to github.
-All valid queries return a JSON object containing the requested information.
-
-Overview:
-
-	/v1/record/	: Access and manipulate categorized Elastic Search references.
-	/v1/regex/	: Access and manipulate regex objects.
-	/v1/totals/	: Access total number of records of objects.
-
-
-Manipulate records:
--------------------
-
-GET	Queries for records matching the given criteria.
-
-	Structure:
-
-	-	/record/id
-
-			id	: MoLog record ID
-		
-	-	/record?limit=value&host=value&level=value
-	
-			Parameters:
-		
-				limit	: an integer value indicating the amount of records to show.
-				host	: a string value indicating the hostname.
-				level	: an string value indicating uery for records of this level.
-				sort	: a value of 1 or 0 which order on date ascending or descending respectively.
-
-DELETE	Deletes records from the MoLog DB.
-
-	Structure:
-	
-	-	/record/id
-	
-			id	: MoLog record ID			
-
-	-	/record?host=value
-
-			Parameters:
-		
-				host	: a string value indicating the hostname.
-
-		
-Manipulate regexes:
--------------------
-
-Regexes have following JSON data structure:
-
-	{
-	"tags":[
-	"linux"
-	],
-	"regexes":{
-	"message":".*?cheese.*"
-	},
-	"order":"1",
-	"type":".*",
-	"id":"4ee4b2048a99d21154000003"
-	}
-
-	The ID field is auto generated.
-
-GET	Queries for the stored regexes
-
-	Structure:
-	
-	-	/regex/id
-		
-			id	: the regex id
-
-	-	/regex?tags=value
-	
-			host	: hostname
-	
-	
-			Parameters:
-		
-				tags	: a string containing comma separated values of all tags which should match.
-
-DELETE	Deletes stored regexes.
-
-	Structure:
-	
-	-	/regex/id
-		
-			id	: the regex id
-	
-	-	/regex?tags=value
-
-			host	: hostname
-	
-	
-			Parameters:
-		
-				tags	: a string containing comma separated values of all tags which should match.
-
-PUT	Inserts a new regex or updates a stored regex.
-
-	Structure:
-	
-	-	/regex/id
-	
-			id	: the regex id
-		
-
-
-	Note: if you define "id" it implies an update of that regex, if not a new regex is inserted.
-	
-
-Query Totals:
--------------
-
-GET	Queries for total results of one or multiple hosts
-
-	Structure:
-	
-		/totals/host
-		
-			host	: a valid hostname
-
-	
-	Omitting host will give you an overview of all hosts.
+This experimental version of MoLog is a complete rewrite based upon the Wishbone library.
+The motivation of this rewrite is to have cleaner, more modular code and to have more functionality.
 
