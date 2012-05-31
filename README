@@ -13,7 +13,7 @@ Features:
 
     * Wishbone based
     * Ability to chain named regular expressions.
-    * Positive and negative regex mathing.
+    * Positive and negative regex matching.
 
 
 This unfinished version of MoLog is a complete rewrite based upon the Wishbone library.
