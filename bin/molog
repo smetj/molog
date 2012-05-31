@@ -31,17 +31,16 @@ if __name__ == '__main__':
     def setup():    
         wb = Wishbone()
         wb.registerModule ( ('wishbone.io_modules', 'Broker', 'broker'), host='sandbox', vhost='/', username='guest', password='guest', consume_queue='molog_input' )
+        wb.registerModule ( ('wishbone.io_modules', 'NamedPipe', 'NamedPipe'), file='/tmp/molog_input' )
         wb.registerModule ( ('wishbone.modules', 'JSONValidator', 'validateLogStashData'), schema='/opt/molog/lib/schema/broker', convert=True )
         wb.registerModule ( ('molog', 'StoreES', 'store_es'), host='sandbox:9200' )
-        
-        #Still to write
-        #wb.registerModule ( ('molog', 'Filter', 'filter'), host='mongodb' )
-        #wb.registerModule ( ('molog', 'Matches', 'matches'), host='mongodb' )
+        wb.registerModule ( ('molog', 'Matches', 'matches'), host='sandbox' )
         #wb.registerModule ( ('molog', 'NagiosEvent', 'nagios_event'), host='mongodb' )
-        
         
         wb.connect (wb.broker.inbox, wb.validateLogStashData.inbox)
         wb.connect (wb.validateLogStashData.outbox, wb.store_es.inbox)
+        wb.connect (wb.store_es.outbox, wb.matches.inbox)
+        
         
         wb.start()
         
