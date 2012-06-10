@@ -31,7 +31,7 @@ if __name__ == '__main__':
     def setup():    
         wb = Wishbone()
         wb.registerModule ( ('wishbone.io_modules', 'Broker', 'broker'), host='sandbox', vhost='/', username='guest', password='guest', consume_queue='molog_input' )
-        wb.registerModule ( ('wishbone.io_modules', 'NamedPipe', 'NamedPipe'), file='/tmp/molog_input' )
+        #wb.registerModule ( ('wishbone.io_modules', 'NamedPipe', 'NamedPipe'), file='/tmp/molog_input' )
         wb.registerModule ( ('wishbone.modules', 'JSONValidator', 'validateLogStashData'), schema='/opt/molog/lib/schema/broker', convert=True )
         wb.registerModule ( ('molog', 'StoreES', 'store_es'), host='sandbox:9200' )
         wb.registerModule ( ('molog', 'Matches', 'matches'), host='sandbox' )
@@ -44,5 +44,5 @@ if __name__ == '__main__':
         
         wb.start()
         
-    server = Server(instances=1, setup=setup, daemonize=False, name='moncli')
+    server = Server(instances=5, setup=setup, daemonize=False, name='moncli')
     server.start()

@@ -25,7 +25,7 @@
 from re import match
 from wishbone.toolkit import PrimitiveActor
 from pymongo import Connection
-from gevent.monkey import patch_all; patch_all()
+from gevent import monkey; monkey.patch_socket()
 
 class Matches(PrimitiveActor):
     '''Reads all defined regex chains from MongoDB and applies them to the received data to see if we have a match.
@@ -41,39 +41,53 @@ class Matches(PrimitiveActor):
         PrimitiveActor.__init__(self, name)
         self.host = kwargs.get('host','localhost')
         self.port = kwargs.get('port',27017)
-        self.chains = self.__setupDB()
+        self.connection = self.__setupDB()
+        self.chains = self.connection.molog.chains
+        print "x"
     
     def consume(self,doc):
-        #print doc["data"]["@fields"]
+        '''For each message received, run through all defined chains and look for a match.'''
         for chain in self.chains.find():
             if self.__checkMatch(chain, doc):
                 self.logging.info('Match')
+                print doc['header']['es_reference']
                 self.sendData(doc)
             else:
                 self.logging.info('No Match')                
     
     def __checkMatch(self, chain, doc):
-            for regex in chain['regexes']:
-                if doc['data'].has_key(regex['field']):
-                    if regex['type'] == 'positive':
-                        if match(regex['regex'], doc['data'][regex['field']]):
-                            self.logging.info ('%s matches %s' % (doc['data'][regex['field']], regex['regex']))
-                        else:
-                            pass
-                    elif rule['type'] == 'negative':
-                        if not match(regex['regex'], doc['data'][regex['field']]):
-                            self.logging.info ('%s does not match %s' % (doc['data'][regex['field']], regex['regex']))
-                        else:
-                            return False
-                else:
+        '''For each regex in the chain, check wether it's intended for a root key or @fields.'''
+        for regex in chain['regexes']:
+            if regex['field'].startswith('@') and doc['data'].has_key(regex['field']):
+                if self.__match( regex, doc['data'][regex['field']] ) == False:
                     return False
-            return True                    
+            elif doc['data']['@fields'].has_key(regex['field']):
+                for value in doc['data']['@fields'][regex['field']]:
+                    if self.__match( regex, value ) == False:
+                        return False
+            else:
+                return False                    
+        return True                    
+            
+    def __match(self, regex, data):
+        '''Do some actual regex matching.'''
+        if regex['type'] == 'positive':
+            if match(regex['regex'], data):
+                self.logging.info ('%s matches %s' % (data, regex['regex']))
+                return True
+        elif rule['type'] == 'negative':
+            if not match(regex['regex'], data):
+                self.logging.info ('%s does not match %s' % (data, regex['regex']))
+                return True
+        return False
 
     def shutdown(self):
+        self.connection.close()
         self.logging.info('Shutdown')
 
     def __setupDB(self):
-        return Connection( self.host, self.port).molog.chains
+        '''Setup a MongoDB connection.'''
+        return Connection( self.host, self.port, use_greenlets=True )
             
         
         
