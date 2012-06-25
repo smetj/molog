@@ -23,37 +23,38 @@
 #       
 
 from re import match
-from wishbone.toolkit import PrimitiveActor
-from pymongo import Connection
-from gevent import monkey; monkey.patch_socket()
+from wishbone.toolkit import PrimitiveActor, MongoTools
 
-class Matches(PrimitiveActor):
+class Matches(PrimitiveActor,MongoTools):
     '''Reads all defined regex chains from MongoDB and applies them to the received data to see if we have a match.
 
-    Unmatched records are dropped.
+    Unmatched records are dropped, matched records are written into MongoDB
     
     Parameters:
     
-        * name: 
+        * name: the name of this module.
+        * host: The hostname on which MongoDB is listening
+        * port: The port on which MongoDB is listening.
     '''
     
     def __init__(self, name, *args, **kwargs):
         PrimitiveActor.__init__(self, name)
         self.host = kwargs.get('host','localhost')
         self.port = kwargs.get('port',27017)
-        self.connection = self.__setupDB()
-        self.chains = self.connection.molog.chains
-        print "x"
-    
+        self.setupConnection()
+        
     def consume(self,doc):
         '''For each message received, run through all defined chains and look for a match.'''
-        for chain in self.chains.find():
+        for chain in self.conn.molog.chains.find():
             if self.__checkMatch(chain, doc):
-                self.logging.info('Match')
-                print doc['header']['es_reference']
+                self.writeMongo(doc, chain['tags'])
+                #lookup number of registered warnings & criticals.
+                doc['header']['warnings']=1
+                doc['header']['criticals']=2
+                doc['header']['name']=chain['name']
                 self.sendData(doc)
             else:
-                self.logging.info('No Match')                
+                self.logging.debug ('No match for %s' % doc['data']['@message'])
     
     def __checkMatch(self, chain, doc):
         '''For each regex in the chain, check wether it's intended for a root key or @fields.'''
@@ -73,21 +74,23 @@ class Matches(PrimitiveActor):
         '''Do some actual regex matching.'''
         if regex['type'] == 'positive':
             if match(regex['regex'], data):
-                self.logging.info ('%s matches %s' % (data, regex['regex']))
+                self.logging.debug ('data: %s positively matches regex: %s' % (data, regex['regex']))
                 return True
         elif rule['type'] == 'negative':
             if not match(regex['regex'], data):
-                self.logging.info ('%s does not match %s' % (data, regex['regex']))
+                self.logging.debug ('data: %s negatively matches regex: %s' % (data, regex['regex']))
                 return True
         return False
 
+    def writeMongo(self,doc, tags):
+        '''Writes a matched document reference into MongoDB.'''
+        self.conn.molog.references.insert({'es_id':doc['header']['es_reference']['_id'],'hostname':doc['data']['@source_host'],'priority': doc['data']['@fields']['priority'],'tags': tags})
+    
     def shutdown(self):
-        self.connection.close()
+        try:
+            self.conn.close()
+        except:
+            pass
         self.logging.info('Shutdown')
 
-    def __setupDB(self):
-        '''Setup a MongoDB connection.'''
-        return Connection( self.host, self.port, use_greenlets=True )
-            
-        
-        
+ 

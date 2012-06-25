@@ -24,3 +24,4 @@
 
 from storees import StoreES
 from matches import Matches
+from nagioscheckresult import NagiosCheckResult
