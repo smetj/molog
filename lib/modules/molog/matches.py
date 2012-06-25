@@ -35,8 +35,8 @@ class Matches(PrimitiveActor,MongoTools):
         * name: the name of this module.
         * host: The hostname on which MongoDB is listening
         * port: The port on which MongoDB is listening.
-        * warnings: The warning Map
-        * criticals: The criticals Map
+        * warning: The warning Map
+        * critical: The criticals Map
     '''
     
     def __init__(self, name, *args, **kwargs):
@@ -52,7 +52,7 @@ class Matches(PrimitiveActor,MongoTools):
         for chain in self.conn.molog.chains.find():
             if self.__checkMatch(chain, doc):
                 self.writeMongo(doc, chain['tags'])
-                (doc['header']['warnings'], doc['header']['criticals'])=self.countMongo(doc['data']['@source_host'])
+                (doc['header']['warning'], doc['header']['critical'])=self.countMongo(doc['data']['@source_host'])
                 doc['header']['name']=chain['name']
                 self.sendData(doc)
             else:
