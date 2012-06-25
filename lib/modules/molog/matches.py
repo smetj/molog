@@ -35,12 +35,16 @@ class Matches(PrimitiveActor,MongoTools):
         * name: the name of this module.
         * host: The hostname on which MongoDB is listening
         * port: The port on which MongoDB is listening.
+        * warnings: The warning Map
+        * criticals: The criticals Map
     '''
     
     def __init__(self, name, *args, **kwargs):
         PrimitiveActor.__init__(self, name)
         self.host = kwargs.get('host','localhost')
         self.port = kwargs.get('port',27017)
+        self.warning = kwargs.get('warning',[])
+        self.critical = kwargs.get('critical',[])
         self.setupConnection()
         
     def consume(self,doc):
@@ -48,9 +52,7 @@ class Matches(PrimitiveActor,MongoTools):
         for chain in self.conn.molog.chains.find():
             if self.__checkMatch(chain, doc):
                 self.writeMongo(doc, chain['tags'])
-                #lookup number of registered warnings & criticals.
-                doc['header']['warnings']=1
-                doc['header']['criticals']=2
+                (doc['header']['warnings'], doc['header']['criticals'])=self.countMongo(doc['data']['@source_host'])
                 doc['header']['name']=chain['name']
                 self.sendData(doc)
             else:
@@ -85,6 +87,13 @@ class Matches(PrimitiveActor,MongoTools):
     def writeMongo(self,doc, tags):
         '''Writes a matched document reference into MongoDB.'''
         self.conn.molog.references.insert({'es_id':doc['header']['es_reference']['_id'],'hostname':doc['data']['@source_host'],'priority': doc['data']['@fields']['priority'],'tags': tags})
+    
+    def countMongo(self,host):
+        '''Counting the amount of objects we already have referenced.'''
+
+        return ( self.conn.molog.references.find({'hostname':host,'priority': { "$in":self.warning}}).count(), 
+        self.conn.molog.references.find({'hostname':host,'priority': { "$in":self.critical}}).count() )
+        
     
     def shutdown(self):
         try:

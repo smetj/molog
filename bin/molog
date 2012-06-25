@@ -33,8 +33,8 @@ if __name__ == '__main__':
         wb.registerModule ( ('wishbone.io_modules.broker', 'Broker', 'broker'), host='sandbox', vhost='/', username='guest', password='guest', consume_queue='molog_input' )
         wb.registerModule ( ('wishbone.modules.jsonvalidator', 'JSONValidator', 'validateLogStashData'), schema='/opt/molog/lib/schema/broker', convert=True )
         wb.registerModule ( ('molog', 'StoreES', 'store_es'), host='sandbox:9200' )
-        wb.registerModule ( ('molog', 'Matches', 'matches'), host='sandbox', port=27017 )
-        wb.registerModule ( ('molog', 'NagiosCheckResult', 'nagiosCheckResult'), warning=[3,4], critical=[0,1,2], exchange='', routing_key='nagios_check_results' )
+        wb.registerModule ( ('molog', 'Matches', 'matches'), host='sandbox', port=27017, warning=['3','4'], critical=['0','1','2'] )
+        wb.registerModule ( ('molog', 'NagiosCheckResult', 'nagiosCheckResult'), warning=['3','4'], critical=['0','1','2'], exchange='', routing_key='nagios_check_results' )
 
         #Connecting the dots
         wb.connect (wb.broker.inbox, wb.validateLogStashData.inbox)

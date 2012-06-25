@@ -42,20 +42,17 @@ class NagiosCheckResult(PrimitiveActor):
         PrimitiveActor.__init__(self, name)
         self.exchange = kwargs.get('exchange','')
         self.routing_key = kwargs.get('routing_key','')
-        self.warning = kwargs.get('warning',[3,4])
-        self.critical = kwargs.get('critical',[0,1,2])
-        
+        self.warning = kwargs.get('warning',['3','4'])
+        self.critical = kwargs.get('critical',['0','1','2'])
     
     def consume(self,doc):
         doc['header']['broker_exchange']=self.exchange
         doc['header']['broker_key']=self.routing_key
         return_code="0"
         status="OK"
-        warnings="0"
-        criticals="0"
-        nagios_format = '[%s] PROCESS_SERVICE_CHECK_RESULT;%s;%s;%s;%s - %s warnings, %s criticals'%(time(),doc['data']['@fields']['logsource'][0],doc['header']['name'],return_code,status,warnings,criticals)
+        nagios_format = '[%s] PROCESS_SERVICE_CHECK_RESULT;%s;%s;%s;%s - %s warnings, %s criticals'%(time(),doc['data']['@fields']['logsource'][0],doc['header']['name'],return_code,status,doc['header']['warnings'],doc['header']['criticals'])
         doc['data']=nagios_format
         self.sendData(doc)
-       
+        
     def shutdown(self):
         self.logging.info('Shutdown')
