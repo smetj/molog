@@ -23,7 +23,8 @@
 #       
 
 import json
-from wishbone.toolkit import PrimitiveActor, ESTools
+from wishbone.toolkit import PrimitiveActor
+from wishbone.tools.estools import ESTools
 from datetime import date
 from gevent import monkey; monkey.patch_all()
 

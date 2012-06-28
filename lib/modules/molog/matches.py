@@ -23,7 +23,8 @@
 #       
 
 from re import match
-from wishbone.toolkit import PrimitiveActor, MongoTools
+from wishbone.toolkit import PrimitiveActor
+from wishbone.tools.mongotools import MongoTools
 
 class Matches(PrimitiveActor,MongoTools):
     '''Reads all defined regex chains from MongoDB and applies them to the received data to see if we have a match.
