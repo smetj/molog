@@ -118,7 +118,7 @@ class Records(ReturnCodes, MologTools):
     def GET(self, sr, body, params, env):
         if env.has_key('id'):
             #We're looking for a certain ID
-            return self.code200(sr, self.__getRecords(id=ObjectId(env['id'])))
+            return self.code200(sr, self.getRecords(id=ObjectId(env['id'])))
         else:
             #We're doing a query using searchparams if available.
             query = self.buildQuery(params,[ 'hostname', 'priority', 'tags' ])
@@ -137,11 +137,11 @@ class Regexes(ReturnCodes):
     def GET(self, sr, body, params, env):
        if env.has_key('id'):
             #We're looking for a certain ID
-            return self.code200(sr, self.__getRecords(id=ObjectId(env['id'])))
+            return self.code200(sr, self.getRegexes(id=ObjectId(env['id'])))
         else:
             #We're doing a query using searchparams if available.
             query = self.buildQuery(params,[ 'hostname', 'priority', 'tags' ])
-            return self.code200(sr, self.getRecords(query, limit=int(params.get('limit',0))))
+            return self.code200(sr, self.getRegexes(query, limit=int(params.get('limit',0))))
 
     def POST(self, *args, **kwargs):
         return self.code200(args[0], "POST")
