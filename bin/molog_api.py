@@ -72,6 +72,7 @@ class MologTools():
     def getRegexes(self, query, limit):
         '''Queries MongoDB and returns regexes based upon the query passed.
         '''
+        result=[]
         for reference in self.db.chains.find(query).limit(limit):
             result.append(reference)
         return self.generateJSON(result)
@@ -107,6 +108,7 @@ class API_V1(ReturnCodes):
             sys.exit(1)
 
         self.records=Records(self.mongo)
+        self.regexes=Regexes(self.mongo)
         
     def help(self, sr, body, params, env):
         return self.code200(sr, "heeeeeeeeeeeeeeeeeelp")
@@ -130,17 +132,17 @@ class Records(ReturnCodes, MologTools):
     def DELETE(self, *args, **kwargs):
         return self.code200(args[0], "DELETE")
 
-class Regexes(ReturnCodes):
+class Regexes(ReturnCodes, MologTools):
     def __init__(self, mongodb):
-        self.mongodb=mongodb
+        self.db=mongodb
         
     def GET(self, sr, body, params, env):
-       if env.has_key('id'):
+        if env.has_key('id'):
             #We're looking for a certain ID
             return self.code200(sr, self.getRegexes(id=ObjectId(env['id'])))
         else:
             #We're doing a query using searchparams if available.
-            query = self.buildQuery(params,[ 'hostname', 'priority', 'tags' ])
+            query = self.buildQuery(params,[ 'name', 'tags' ])
             return self.code200(sr, self.getRegexes(query, limit=int(params.get('limit',0))))
 
     def POST(self, *args, **kwargs):
@@ -172,6 +174,11 @@ class Application(object):
         self.map.connect('records', '/v1/records/{id}', app=self.rest.records.GET, conditions=dict(method=["GET"]))
         self.map.connect('records', '/v1/records/{id}', app=self.rest.records.POST, conditions=dict(method=["POST"]))
         self.map.connect('records', '/v1/records/{id}', app=self.rest.records.DELETE, conditions=dict(method=["DELETE"]))
+        
+        self.map.connect('regexes', '/v1/regexes', app=self.rest.regexes.GET, conditions=dict(method=["GET"]))
+        self.map.connect('regexes', '/v1/regexes/{id}', app=self.rest.regexes.GET, conditions=dict(method=["GET"]))
+        self.map.connect('regexes', '/v1/regexes/{id}', app=self.rest.regexes.POST, conditions=dict(method=["POST"]))
+        self.map.connect('regexes', '/v1/regexes/{id}', app=self.rest.regexes.DELETE, conditions=dict(method=["DELETE"]))
         
         #self.map.connect('regexes', '/v1/regexes/{id}', app=self.rest.regexes)        
         #self.map.connect('totals', '/v1/totals/{id}', app=self.rest.totals)
