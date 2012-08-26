@@ -70,7 +70,7 @@ class Matches(PrimitiveActor,MongoTools):
                     if self.__match( regex, value ) == False:
                         return False
             else:
-                return False                    
+                return False
         return True                    
             
     def __match(self, regex, data):
