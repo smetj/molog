@@ -47,6 +47,7 @@ from pymongo import Connection
 from bson.objectid import ObjectId
 
 class MologTools():
+    
     def buildQuery(self,dict, list):
         query={}
         if dict.has_key('id'):
@@ -55,27 +56,43 @@ class MologTools():
             if dict.has_key(param) and dict[param] != None:
                 query[param]=dict[param]
         return query
-    def generateJSON(self, object):
+    
+    def generateJSON(self, metrics={}, result=[]):
         data=[]
-        for item in object:
-            item['id']=str(item['_id'])
-            del(item['_id'])
-            data.append(item)
-        return json.dumps(object)
-    def getRecords(self, query, limit):
+        for item in result:
+            if item.has_key('_id'):
+                item['id']=str(item['_id'])
+                del(item['_id'])
+                data.append(item)
+        return json.dumps({'metrics':metrics, 'data':data})
+    
+    def getRecords(self, query={}, limit=0):
         '''Queries MongoDB and returns records based upon the query passed.
         '''
         result=[]
+        metrics={'total':self.db.references.find(query).count()}
         for reference in self.db.references.find(query).limit(limit):
             result.append(reference)
-        return self.generateJSON(result)
-    def getRegexes(self, query, limit):
-        '''Queries MongoDB and returns regexes based upon the query passed.
+        return self.generateJSON(metrics, result)
+
+    def delRecords(self, query):
+        '''Deletes records from MongoDB based upon the query passed.
         '''
         result=[]
+        metrics={'total':self.db.references.find(query).count()}
+        self.db.references.remove(query)
+        return self.generateJSON(metrics,[])  
+ 
+    def getRegexes(self, query={}, limit=0):
+        '''
+        Queries MongoDB and returns regexes based upon the query passed.
+        '''
+        result=[]
+        metrics={'total':self.db.chains.find(query).count()}
         for reference in self.db.chains.find(query).limit(limit):
             result.append(reference)
-        return self.generateJSON(result)
+        return self.generateJSON(metrics, result)
+
 class ReturnCodes():
     def __init__(self):
         self.template='<html><head>{0}</head><body><h1>{0}</h1></br>{1}</body></html>'
@@ -120,7 +137,7 @@ class Records(ReturnCodes, MologTools):
     def GET(self, sr, body, params, env):
         if env.has_key('id'):
             #We're looking for a certain ID
-            return self.code200(sr, self.getRecords(id=ObjectId(env['id'])))
+            return self.code200(sr, self.getRecords(query={'_id':ObjectId(env['id'])}))
         else:
             #We're doing a query using searchparams if available.
             query = self.buildQuery(params,[ 'hostname', 'priority', 'tags' ])
@@ -129,8 +146,12 @@ class Records(ReturnCodes, MologTools):
     def POST(self, *args, **kwargs):
         return self.code200(args[0], "POST")
 
-    def DELETE(self, *args, **kwargs):
-        return self.code200(args[0], "DELETE")
+    def DELETE(self, sr, body, params, env):
+        if env.has_key('id'):
+            return self.code200(sr, self.delRecords(query={'_id':ObjectId(env['id'])}))
+        else:
+            query = self.buildQuery(params,[ 'hostname', 'priority', 'tags' ])
+            return self.code200(sr, self.delRecords(query))
 
 class Regexes(ReturnCodes, MologTools):
     def __init__(self, mongodb):
@@ -139,7 +160,7 @@ class Regexes(ReturnCodes, MologTools):
     def GET(self, sr, body, params, env):
         if env.has_key('id'):
             #We're looking for a certain ID
-            return self.code200(sr, self.getRegexes(id=ObjectId(env['id'])))
+            return self.code200(sr, self.getRegexes(query={'_id':ObjectId(env['id'])}))
         else:
             #We're doing a query using searchparams if available.
             query = self.buildQuery(params,[ 'name', 'tags' ])
@@ -150,19 +171,6 @@ class Regexes(ReturnCodes, MologTools):
 
     def DELETE(self, *args, **kwargs):
         return self.code200(args[0], "DELETE")        
-
-class Totals(ReturnCodes):
-    def __init__(self, mongodb):
-        self.mongodb=mongodb
-        
-    def GET(self, sr, body, params):
-        return self.code200(sr, str(params))
-
-    def POST(self, *args, **kwargs):
-        return self.code200(args[0], "POST")
-
-    def DELETE(self, *args, **kwargs):
-        return self.code200(args[0], "DELETE")                
 
 class Application(object):
     def __init__(self):
@@ -180,8 +188,6 @@ class Application(object):
         self.map.connect('regexes', '/v1/regexes/{id}', app=self.rest.regexes.POST, conditions=dict(method=["POST"]))
         self.map.connect('regexes', '/v1/regexes/{id}', app=self.rest.regexes.DELETE, conditions=dict(method=["DELETE"]))
         
-        #self.map.connect('regexes', '/v1/regexes/{id}', app=self.rest.regexes)        
-        #self.map.connect('totals', '/v1/totals/{id}', app=self.rest.totals)
 
     def genParameters(self, data):
         pass
