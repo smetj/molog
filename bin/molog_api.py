@@ -93,6 +93,15 @@ class MologTools():
             result.append(reference)
         return self.generateJSON(metrics, result)
 
+    def delRegexes(self, query={}):
+        '''
+        Deletes records from  MongoDB based upon the query passed.
+        '''
+        result=[]
+        metrics={'total':self.db.chains.find(query).count()}
+        self.db.chains.remove(query)
+        return self.generateJSON(metrics, [])
+
 class ReturnCodes():
     def __init__(self):
         self.template='<html><head>{0}</head><body><h1>{0}</h1></br>{1}</body></html>'
@@ -184,8 +193,12 @@ class Regexes(ReturnCodes, MologTools):
     def POST(self, *args, **kwargs):
         return self.code200(args[0], "POST")
 
-    def DELETE(self, *args, **kwargs):
-        return self.code200(args[0], "DELETE")        
+    def DELETE(self, sr, body, params, env):
+        if env.has_key('id'):
+            return self.code200(sr, self.delRegexes(query={'_id':ObjectId(env['id'])}))
+        else:
+            query = self.buildQuery(params,[ 'name', 'tags' ])
+            return self.code200(sr, self.delRegexes(query))
 
 class Application(object):
     def __init__(self):
@@ -200,6 +213,7 @@ class Application(object):
         self.map.connect('records', '/v1/records/{id}', app=self.rest.records.DELETE, conditions=dict(method=["DELETE"]))
         
         self.map.connect('regexes', '/v1/regexes', app=self.rest.regexes.GET, conditions=dict(method=["GET"]))
+        self.map.connect('records', '/v1/regexes', app=self.rest.regexes.DELETE, conditions=dict(method=["DELETE"]))        
         self.map.connect('regexes', '/v1/regexes/{id}', app=self.rest.regexes.GET, conditions=dict(method=["GET"]))
         self.map.connect('regexes', '/v1/regexes/{id}', app=self.rest.regexes.POST, conditions=dict(method=["POST"]))
         self.map.connect('regexes', '/v1/regexes/{id}', app=self.rest.regexes.DELETE, conditions=dict(method=["DELETE"]))
