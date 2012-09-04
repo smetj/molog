@@ -102,20 +102,29 @@ class ReturnCodes():
             ('Content-Type', 'text/html'),
             ('Content-Length', str(len(data)))
         ]
-        
-    def code404(self, start_response, data):
-        start_response('404 Not Found', self.generateHeader(data))
+            
+    def code200(self, start_response, data):
+        start_response('200 OK', self.generateHeader(data))
         return[data]
+    
+    def code204(self, start_response):
+        start_response('204',self.generateHeader(''))
+        return []
+
+    def code400(self, start_response):
+        message='400 Bad Request'
+        start_response(message,self.generateHeader(message))
+        return [message]
+
+    def code404(self, start_response, data):
+        start_response('404 Not Found', self.generateHeader(str(data)))
+        return[str(data)]
 
     def code422(self, start_response, err):
         html = self.template.format('422 Unprocessable entity',err)
         start_response('422 Unprocessable entity', self.generateHeader(html))
         return [html]
-    
-    def code200(self, start_response, data):
-        start_response('200 OK', self.generateHeader(data))
-        return[data]
-
+        
 class API_V1(ReturnCodes):
     def __init__(self, host='localhost', db='molog'):
         try:
@@ -135,14 +144,17 @@ class Records(ReturnCodes, MologTools):
         self.db=mongodb
         
     def GET(self, sr, body, params, env):
-        if env.has_key('id'):
-            #We're looking for a certain ID
-            return self.code200(sr, self.getRecords(query={'_id':ObjectId(env['id'])}))
-        else:
-            #We're doing a query using searchparams if available.
-            query = self.buildQuery(params,[ 'hostname', 'priority', 'tags' ])
-            return self.code200(sr, self.getRecords(query, limit=int(params.get('limit',0))))
-
+        try:
+            if env.has_key('id'):
+                #We're looking for a certain ID
+                return self.code200(sr, self.getRecords(query={'_id':ObjectId(env['id'])}))
+            else:
+                #We're doing a query using searchparams if available.
+                query = self.buildQuery(params,[ 'hostname', 'priority', 'tags' ])
+                return self.code200(sr, self.getRecords(query, limit=int(params.get('limit',0))))
+        except Exception as err:
+            return self.code400(sr)
+            
     def POST(self, *args, **kwargs):
         return self.code200(args[0], "POST")
 
@@ -158,14 +170,17 @@ class Regexes(ReturnCodes, MologTools):
         self.db=mongodb
         
     def GET(self, sr, body, params, env):
-        if env.has_key('id'):
-            #We're looking for a certain ID
-            return self.code200(sr, self.getRegexes(query={'_id':ObjectId(env['id'])}))
-        else:
-            #We're doing a query using searchparams if available.
-            query = self.buildQuery(params,[ 'name', 'tags' ])
-            return self.code200(sr, self.getRegexes(query, limit=int(params.get('limit',0))))
-
+        try:
+            if env.has_key('id'):
+                #We're looking for a certain ID
+                return self.code200(sr, self.getRegexes(query={'_id':ObjectId(env['id'])}))
+            else:
+                #We're doing a query using searchparams if available.
+                query = self.buildQuery(params,[ 'name', 'tags' ])
+                return self.code200(sr, self.getRegexes(query, limit=int(params.get('limit',0))))
+        except Exception as err:
+            return self.code400(sr)
+    
     def POST(self, *args, **kwargs):
         return self.code200(args[0], "POST")
 
@@ -179,6 +194,7 @@ class Application(object):
         self.map = Mapper()
         self.map.connect('v1', '/v1', app=self.rest.help)
         self.map.connect('records', '/v1/records', app=self.rest.records.GET, conditions=dict(method=["GET"]))
+        self.map.connect('records', '/v1/records', app=self.rest.records.DELETE, conditions=dict(method=["DELETE"]))
         self.map.connect('records', '/v1/records/{id}', app=self.rest.records.GET, conditions=dict(method=["GET"]))
         self.map.connect('records', '/v1/records/{id}', app=self.rest.records.POST, conditions=dict(method=["POST"]))
         self.map.connect('records', '/v1/records/{id}', app=self.rest.records.DELETE, conditions=dict(method=["DELETE"]))
