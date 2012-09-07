@@ -83,7 +83,7 @@ class MologTools():
         self.db.references.remove(query)
         return self.generateJSON(metrics,[])  
  
-    def getRegexes(self, query={}, limit=0):
+    def getChains(self, query={}, limit=0):
         '''
         Queries MongoDB and returns regexes based upon the query passed.
         '''
@@ -93,7 +93,7 @@ class MologTools():
             result.append(reference)
         return self.generateJSON(metrics, result)
 
-    def delRegexes(self, query={}):
+    def delChains(self, query={}):
         '''
         Deletes records from  MongoDB based upon the query passed.
         '''
@@ -101,6 +101,10 @@ class MologTools():
         metrics={'total':self.db.chains.find(query).count()}
         self.db.chains.remove(query)
         return self.generateJSON(metrics, [])
+        
+    def insertChains(self, data):
+        self.db.chains.insert(json.loads(data))
+        return
 
 class ReturnCodes():
     def __init__(self):
@@ -143,7 +147,7 @@ class API_V1(ReturnCodes):
             sys.exit(1)
 
         self.records=Records(self.mongo)
-        self.regexes=Regexes(self.mongo)
+        self.chains=Chains(self.mongo)
         
     def help(self, sr, body, params, env):
         return self.code200(sr, "heeeeeeeeeeeeeeeeeelp")
@@ -164,9 +168,6 @@ class Records(ReturnCodes, MologTools):
         except Exception as err:
             return self.code400(sr)
             
-    def POST(self, *args, **kwargs):
-        return self.code200(args[0], "POST")
-
     def DELETE(self, sr, body, params, env):
         if env.has_key('id'):
             return self.code200(sr, self.delRecords(query={'_id':ObjectId(env['id'])}))
@@ -174,7 +175,7 @@ class Records(ReturnCodes, MologTools):
             query = self.buildQuery(params,[ 'hostname', 'priority', 'tags' ])
             return self.code200(sr, self.delRecords(query))
 
-class Regexes(ReturnCodes, MologTools):
+class Chains(ReturnCodes, MologTools):
     def __init__(self, mongodb):
         self.db=mongodb
         
@@ -182,19 +183,27 @@ class Regexes(ReturnCodes, MologTools):
         try:
             if env.has_key('id'):
                 #We're looking for a certain ID
-                return self.code200(sr, self.getRegexes(query={'_id':ObjectId(env['id'])}))
+                return self.code200(sr, self.getChains(query={'_id':ObjectId(env['id'])}))
             else:
                 #We're doing a query using searchparams if available.
                 query = self.buildQuery(params,[ 'name', 'tags' ])
-                return self.code200(sr, self.getRegexes(query, limit=int(params.get('limit',0))))
+                return self.code200(sr, self.getChains(query, limit=int(params.get('limit',0))))
         except Exception as err:
             return self.code400(sr)
     
-    def POST(self, *args, **kwargs):
-        return self.code200(args[0], "POST")
+    def POST(self, sr, body, params, env):
+        if env.has_key('id'):
+            #perform an update
+            pass
+        else:
+            #add a record
+            self.insertChains(body)
+            return self.code200(sr, '' )
 
     def DELETE(self, sr, body, params, env):
-        if env.has_key('id'):
+        if env.has_key('id') and env.has_key('type') and env.has_key('index'):
+            print "yeah"
+        elif env.has_key('id'):
             return self.code200(sr, self.delRegexes(query={'_id':ObjectId(env['id'])}))
         else:
             query = self.buildQuery(params,[ 'name', 'tags' ])
@@ -209,18 +218,23 @@ class Application(object):
         self.map.connect('records', '/v1/records', app=self.rest.records.GET, conditions=dict(method=["GET"]))
         self.map.connect('records', '/v1/records', app=self.rest.records.DELETE, conditions=dict(method=["DELETE"]))
         self.map.connect('records', '/v1/records/{id}', app=self.rest.records.GET, conditions=dict(method=["GET"]))
-        self.map.connect('records', '/v1/records/{id}', app=self.rest.records.POST, conditions=dict(method=["POST"]))
         self.map.connect('records', '/v1/records/{id}', app=self.rest.records.DELETE, conditions=dict(method=["DELETE"]))
         
-        self.map.connect('regexes', '/v1/regexes', app=self.rest.regexes.GET, conditions=dict(method=["GET"]))
-        self.map.connect('records', '/v1/regexes', app=self.rest.regexes.DELETE, conditions=dict(method=["DELETE"]))        
-        self.map.connect('regexes', '/v1/regexes/{id}', app=self.rest.regexes.GET, conditions=dict(method=["GET"]))
-        self.map.connect('regexes', '/v1/regexes/{id}', app=self.rest.regexes.POST, conditions=dict(method=["POST"]))
-        self.map.connect('regexes', '/v1/regexes/{id}', app=self.rest.regexes.DELETE, conditions=dict(method=["DELETE"]))
+        self.map.connect('chains', '/v1/chains', app=self.rest.chains.GET, conditions=dict(method=["GET"]))
+        self.map.connect('chains', '/v1/chains', app=self.rest.chains.POST, conditions=dict(method=["POST"]))
+        self.map.connect('chains', '/v1/chains', app=self.rest.chains.DELETE, conditions=dict(method=["DELETE"]))
+
+        self.map.connect('chains', '/v1/chains/{id}', app=self.rest.chains.GET, conditions=dict(method=["GET"]))
+        #updating record is idempotent so PUT
+        self.map.connect('chains', '/v1/chains/{id}', app=self.rest.chains.PUT, conditions=dict(method=["PUT"]))
+        
+        self.map.connect('chains', '/v1/chains/{id}', app=self.rest.chains.DELETE, conditions=dict(method=["DELETE"]))
+        self.map.connect('chains', '/v1/chains/{id}/{type}/{index}', app=self.rest.chains.DELETE, conditions=dict(method=["DELETE"]))
         
 
     def genParameters(self, data):
         pass
+    
 
     def __call__(self, environ, start_response):
         match = self.map.routematch(environ=environ)
@@ -237,6 +251,11 @@ class Application(object):
         
         #Serve content
         body = ''.join(environ['wsgi.input'].readlines())
+        try:
+            json.loads(body)
+        except Exception as err:
+            return self.rest.answer.return422(environ, start_response, err)
+        
         url = urlparse.urlparse(environ['RAW_URI'])
         params = urlparse.parse_qs(url.query)
         for param in params:
