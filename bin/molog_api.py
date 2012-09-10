@@ -65,10 +65,6 @@ class MologTools():
                 del(item['_id'])
                 data.append(item)
         return json.dumps(data)
-        
-    def insertChains(self, data):
-        self.db.chains.insert(json.loads(data))
-        return
 
     def overwriteChain(self, id, data):
         self.db.chains.update ({'_id':ObjectId(id)}, json.loads(data))
@@ -168,9 +164,9 @@ class Chains(ReturnCodes, MologTools):
         result = self.generateJSON(result)
         return self.code200(sr, result)
     
-    def POST(self, sr, body, params, env):
-        self.insertChains(body)
-        return self.code200(sr, '' )
+    def insertChains(self, sr, body, params, env):
+        self.db.insert(json.loads(body))
+        return self.code200(sr,'')
     
     def overwriteTag(self, sr, body, params, env):
         tags = self.db.find_one({'_id':ObjectId(env['id'])},{'tags':1})['tags']
@@ -208,7 +204,9 @@ class Chains(ReturnCodes, MologTools):
         return self.code200(sr, '')
 
     def delChains(self, sr, body, params, env):
-        pass
+        query = self.buildQuery(params,[ 'name', 'tags' ])
+        self.db.remove(query)
+        return self.code200(sr, '')
 
     def delChainTag(self, sr, body, params, env):
         tags = self.db.find_one({'_id':ObjectId(env['id'])},{'tags':1})['tags']
@@ -241,8 +239,8 @@ class Application(object):
         self.map.connect('chains', '/v1/chains/{id}', app=self.rest.chains.getChain, conditions=dict(method=["GET"]))
         self.map.connect('chains', '/v1/chains', app=self.rest.chains.getChains, conditions=dict(method=["GET"]))
         
-        #Insert a new chain data
-        self.map.connect('chains', '/v1/chains', app=self.rest.chains.POST, conditions=dict(method=["POST"]))
+        #Insert a new chain
+        self.map.connect('chains', '/v1/chains', app=self.rest.chains.insertChains, conditions=dict(method=["POST"]))
 
         #Update an existing chain data (overwrite = idempotent)
         self.map.connect('chains', '/v1/chains', app=self.rest.chains.overwriteChains, conditions=dict(method=["PUT"]))
