@@ -27,13 +27,7 @@
 # Run this application with:
 #
 #   $ gunicorn multiapp:app
-#
-# And then visit:
-#
-#   http://127.0.0.1:8000/app1url
-#   http://127.0.0.1:8000/app2url
-#   http://127.0.0.1:8000/this_is_a_404
-#
+
 
 try:
     from routes import Mapper
@@ -65,12 +59,10 @@ class MologTools():
                 del(item['_id'])
                 data.append(item)
         return json.dumps(data)
-
-    def overwriteChain(self, id, data):
-        self.db.chains.update ({'_id':ObjectId(id)}, json.loads(data))
-            
         
+
 class ReturnCodes():
+ 
     def __init__(self):
         self.template='<html><head>{0}</head><body><h1>{0}</h1></br>{1}</body></html>'
     
@@ -102,7 +94,9 @@ class ReturnCodes():
         start_response('422 Unprocessable entity', self.generateHeader(html))
         return [html]
         
+
 class API_V1(ReturnCodes):
+
     def __init__(self, host='localhost', db='molog'):
         try:
             self.mongo = Connection(host)[db]
@@ -116,7 +110,9 @@ class API_V1(ReturnCodes):
     def help(self, sr, body, params, env):
         return self.code200(sr, "heeeeeeeeeeeeeeeeeelp")
         
+
 class Records(ReturnCodes, MologTools):
+
     def __init__(self, mongodb):
         self.db=mongodb['references']
     
@@ -144,7 +140,9 @@ class Records(ReturnCodes, MologTools):
         self.db.remove(query)
         return self.code200(sr, '')
 
+
 class Chains(ReturnCodes, MologTools):
+
     def __init__(self, mongodb):
         self.db=mongodb['chains']
         
@@ -220,7 +218,9 @@ class Chains(ReturnCodes, MologTools):
         self.db.update ({'_id':ObjectId(env['id'])}, {'$set':{'regexes':regexes}})
         return self.code200(sr, '')
         
+
 class Application(object):
+    
     def __init__(self):
         self.rest = API_V1(host='sandbox', db='molog')
         self.answer = ReturnCodes()
@@ -258,44 +258,20 @@ class Application(object):
         self.map.connect('chains', '/v1/chains/{id}', app=self.rest.chains.delChain, conditions=dict(method=["DELETE"]))
         self.map.connect('chains', '/v1/chains/{id}/regexes/{index}', app=self.rest.chains.delChainRegex, conditions=dict(method=["DELETE"]))
         self.map.connect('chains', '/v1/chains/{id}/tags/{index}', app=self.rest.chains.delChainTag, conditions=dict(method=["DELETE"]))
-
-    def genParameters(self, data):
-        pass
-
-    def generateOutput(self, data):
-        output=[]
-        for item in data:
-            if item.has_key('_id'):
-                item['id']=str(item['_id'])
-                del(item['_id'])
-                output.append(item)
-        return json.dumps(output)
+        
     def __call__(self, environ, start_response):
         match = self.map.routematch(environ=environ)
         
         #Unknown urls are handled here
         if not match:
             return self.answer.code404(start_response, "No such url")
+        else:
+            body = ''.join(environ['wsgi.input'].readlines())
+            url = urlparse.urlparse(environ['RAW_URI'])
+            params = urlparse.parse_qs(url.query)
+            for param in params:
+                params[param]=params[param][0]
+            return match[0]['app'](start_response, body, params, match[0])
+            
 
-        #Verify the payload
-        #try:
-            #body = json.loads(''.join(environ['wsgi.input'].readlines()))
-        #except Exception as err:
-            #return self.rest.answer.return422(environ, start_response, err)
-        
-        #Serve content
-        body = ''.join(environ['wsgi.input'].readlines())
-        #try:
-            #json.loads(body)
-        #except Exception as err:
-            #return self.rest.answer.return422(environ, start_response, err)
-        
-        url = urlparse.urlparse(environ['RAW_URI'])
-        params = urlparse.parse_qs(url.query)
-        for param in params:
-            params[param]=params[param][0]
-        return match[0]['app'](start_response, body, params, match[0])
-        
-
-
-app = Application()
+molog = Application()
