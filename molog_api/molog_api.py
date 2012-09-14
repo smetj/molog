@@ -26,7 +26,7 @@
 #
 # Run this application with:
 #
-#   $ gunicorn multiapp:app
+#   $ gunicorn molog_api:molog
 
 
 try:
@@ -227,15 +227,15 @@ class Application(object):
         self.map = Mapper()
         self.map.connect('v1', '/v1', app=self.rest.help)
 
-        #Records
+        #Read Records
         self.map.connect('records', '/v1/records/{id}', app=self.rest.records.getRecord, conditions=dict(method=["GET"]))
         self.map.connect('records', '/v1/records', app=self.rest.records.getRecords, conditions=dict(method=["GET"]))
 
+        #Delete Records
         self.map.connect('records', '/v1/records/{id}', app=self.rest.records.delRecord, conditions=dict(method=["DELETE"]))
         self.map.connect('records', '/v1/records', app=self.rest.records.delRecords, conditions=dict(method=["DELETE"]))
         
-        #Chains
-        #Get the the content of one or more chais based on query
+        #Read Chains
         self.map.connect('chains', '/v1/chains/{id}', app=self.rest.chains.getChain, conditions=dict(method=["GET"]))
         self.map.connect('chains', '/v1/chains', app=self.rest.chains.getChains, conditions=dict(method=["GET"]))
         
