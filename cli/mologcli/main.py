@@ -11,21 +11,19 @@ class MologCli(App):
     log = logging.getLogger(__name__)
 
     def __init__(self):        
-        cm = CommandManager('molog')
-        cm.add_command('records',mologcli.Records)
-        cm.add_command('chains',mologcli.Chains)
-        cm.add_command('error',mologcli.Error)
         super(MologCli, self).__init__(
             description='cliff demo app',
             version='0.1',
-            command_manager=cm,
+            command_manager=CommandManager('mologcli.plugins'),
             )        
 
     def initialize_app(self, argv):
+        
         self.log.debug('initialize_app')
 
     def prepare_to_run_command(self, cmd):
         self.log.debug('prepare_to_run_command %s', cmd.__class__.__name__)
+        cmd.__class__.blah='kaka'
 
     def clean_up(self, cmd, result, err):
         self.log.debug('clean_up %s', cmd.__class__.__name__)

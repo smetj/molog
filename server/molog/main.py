@@ -23,28 +23,29 @@
 #  
 
 from wishbone import Wishbone
-from wishbone.server.parallelserver import ParallelServer
+from wishbone.server import ParallelServer
 from logging import DEBUG
 
-def main():
-    def setup():
+def setup():
         wb = Wishbone()
-        wb.registerModule ( ('wishbone.io_modules.broker', 'Broker', 'broker'), host='besrvup-sss01.ttg.global', vhost='/', username='guest', password='guest', consume_queue='molog_test', no_ack=True )
-        wb.registerModule ( ('wishbone.modules.jsonvalidator', 'JSONValidator', 'validateLogStashData'), schema='/etc/molog/broker.schema', convert=True )
-        wb.registerModule ( ('molog', 'StoreES', 'store_es'), host='sandbox:9200' )
-        wb.registerModule ( ('molog', 'Matches', 'matches'), host='sandbox', port=27017, warning=['3','4'], critical=['0','1','2'] )
-        wb.registerModule ( ('molog', 'NagiosCheckResult', 'nagiosCheckResult'), warning=['3','4'], critical=['0','1','2'], exchange='', routing_key='nagios_check_results' )
+        #wb.registerModule ( ('wishbone.io_modules.broker', 'Broker', 'broker'), host='sandbox', vhost='/', username='guest', password='guest', consume_queue='molog_input', no_ack=True )
+        #wb.registerModule ( ('wishbone.modules.jsonvalidator', 'JSONValidator', 'validateLogStashData'), schema='/etc/molog/broker.schema', convert=True )
+        #wb.registerModule ( ('molog', 'StoreES', 'store_es'), host='sandbox:9200' )
+        #wb.registerModule ( ('molog', 'Matches', 'matches'), host='sandbox', port=27017, warning=['3','4'], critical=['0','1','2'] )
+        #wb.registerModule ( ('molog', 'NagiosCheckResult', 'nagiosCheckResult'), warning=['3','4'], critical=['0','1','2'], exchange='', routing_key='nagios_check_results' )
 
         #Connecting the dots
-        wb.connect (wb.broker.inbox, wb.validateLogStashData.inbox)
-        wb.connect (wb.validateLogStashData.outbox, wb.store_es.inbox)
-        wb.connect (wb.store_es.outbox, wb.matches.inbox)
-        wb.connect (wb.matches.outbox, wb.nagiosCheckResult.inbox)
-        wb.connect (wb.nagiosCheckResult.outbox, wb.broker.outbox)        
-               
-    server = ParallelServer(instances=10, setup=setup, daemonize=False, name='moncli', log_level=DEBUG)
+        #wb.connect (wb.broker.inbox, wb.validateLogStashData.inbox)
+        #wb.connect (wb.validateLogStashData.outbox, wb.store_es.inbox)
+        #wb.connect (wb.store_es.outbox, wb.matches.inbox)
+        #wb.connect (wb.matches.outbox, wb.nagiosCheckResult.inbox)
+        #wb.connect (wb.nagiosCheckResult.outbox, wb.broker.outbox)        
+        
+        wb.start()
+        
+def main():        
+    server = ParallelServer(instances=1, setup=setup, daemonize=False, name='moncli', log_level=DEBUG)
     server.start()
 
 if __name__ == '__main__':
     main()
-    
