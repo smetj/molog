@@ -28,9 +28,9 @@ class Records(cmd.Cmd):
         
         '''
         r = requests.get(self.url)
-        table = PrettyTable(['ID','Hostname','Tags','Priority','Message'])
+        table = PrettyTable(['Timestamp','ID','Hostname','Tags','Chain','Message'])
         for record in r.json:
-            table.add_row([record['id'],record['hostname'],','.join(record['tags']),','.join(record['priority']),record['es_id']])
+            table.add_row([record['timestamp'],record['id'],record['hostname'],','.join(record['tags']),record['chain'],record['es_id']])
         print table
         
 
