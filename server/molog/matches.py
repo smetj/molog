@@ -52,42 +52,42 @@ class Matches(PrimitiveActor,MongoTools):
         '''For each message received, run through all defined chains and look for a match.'''
         for chain in self.conn.molog.chains.find():
             if self.__checkMatch(chain, doc):
-                self.writeMongo(doc, chain['tags'])
+                self.writeMongo(doc, chain['tags'], chain['name'])
                 (doc['header']['warning'], doc['header']['critical'])=self.countMongo(doc['data']['@source_host'])
                 doc['header']['name']=chain['name']
-                self.sendData(doc)
             else:
-                self.logging.debug ('No match for %s' % doc['data']['@message'])
+                self.logging.debug ('%s - No match for %s' % (chain['name'],doc['data']['@message']))
+        self.sendData(doc)
     
     def __checkMatch(self, chain, doc):
         '''For each regex in the chain, check wether it's intended for a root key or @fields.'''
         for regex in chain['regexes']:
             if regex['field'].startswith('@') and doc['data'].has_key(regex['field']):
-                if self.__match( regex, doc['data'][regex['field']] ) == False:
+                if self.__match(chain['name'],regex, doc['data'][regex['field']] ) == False:
                     return False
             elif doc['data']['@fields'].has_key(regex['field']):
                 for value in doc['data']['@fields'][regex['field']]:
-                    if self.__match( regex, value ) == False:
+                    if self.__match(chain['name'],regex, value ) == False:
                         return False
             else:
                 return False
         return True                    
             
-    def __match(self, regex, data):
+    def __match(self, name, regex, data):
         '''Do some actual regex matching.'''
         if regex['type'] == 'positive':
             if match(regex['regex'], data):
-                self.logging.debug ('data: %s positively matches regex: %s' % (data, regex['regex']))
+                self.logging.debug ('%s - Positive match: %s' % (name, data))
                 return True
         elif rule['type'] == 'negative':
             if not match(regex['regex'], data):
-                self.logging.debug ('data: %s negatively matches regex: %s' % (data, regex['regex']))
+                self.logging.debug ('%s - Negative match= %s' % (name, data))
                 return True
         return False
 
-    def writeMongo(self,doc, tags):
+    def writeMongo(self,doc, tags, name):
         '''Writes a matched document reference into MongoDB.'''
-        self.conn.molog.references.insert({'es_id':doc['header']['es_reference']['_id'],'hostname':doc['data']['@source_host'],'priority': doc['data']['@fields']['priority'],'tags': tags})
+        self.conn.molog.references.insert({'timestamp':doc['data']['@timestamp'],'chain':name,'es_id':doc['header']['es_reference']['_id'],'hostname':doc['data']['@source_host'],'tags': tags})
     
     def countMongo(self,host):
         '''Counting the amount of objects we already have referenced.'''

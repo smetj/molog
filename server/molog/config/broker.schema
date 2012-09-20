@@ -3,20 +3,14 @@
    "additionalProperties":true,
    "required":true,
    "properties":{
-      "@type":{
+      "@timestamp":{
          "type":"string",
          "required":true
       },
       "@fields":{
         "type":"object",
         "required":true,
-        "additionalProperties":true,
-        "properties":{
-            "priority":{
-                "type":"array",
-                "required":true
-                }
-            }
+        "additionalProperties":true
         }
    }
 }

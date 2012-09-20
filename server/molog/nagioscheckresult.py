@@ -48,9 +48,8 @@ class NagiosCheckResult(PrimitiveActor):
     def consume(self,doc):
         doc['header']['broker_exchange']=self.exchange
         doc['header']['broker_key']=self.routing_key
-        (numeric_status, word_status) = self.getStatus(doc['header']['warning'],doc['header']['critical'])
-        nagios_format = '[%s] PROCESS_SERVICE_CHECK_RESULT;%s;%s;%s;%s - %s warnings, %s criticals'%(time(),doc['data']['@fields']['logsource'][0],doc['header']['name'],numeric_status,word_status,doc['header']['warning'],doc['header']['critical'])
-        doc['data']=nagios_format
+        #(numeric_status, word_status) = self.getStatus(doc['header']['warning'],doc['header']['critical'])
+        #nagios_format = '[%s] PROCESS_SERVICE_CHECK_RESULT;%s;%s;%s;%s - %s warnings, %s criticals'%(time(),doc['data']['@fields']['logsource'][0],doc['header']['name'],numeric_status,word_status,doc['header']['warning'],doc['header']['critical'])
         self.sendData(doc)
         
     def getStatus(self,warning,critical):
