@@ -21,6 +21,3 @@
 #       MA 02110-1301, USA.
 #       
 #       
-from records import Records
-from records import Error
-from chains import Chains

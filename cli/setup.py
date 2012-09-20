@@ -48,7 +48,7 @@ setup(
     scripts=[],
 
     provides=[],
-    install_requires=['distribute', 'cliff','restclient'],
+    install_requires=['distribute', 'requests', 'prettytable'],
 
     namespace_packages=[],
     packages=find_packages(),
@@ -57,10 +57,6 @@ setup(
     entry_points={
         'console_scripts': [
             'mologcli = mologcli.main:main'
-            ],
-        'mologcli.plugins': [
-            'chains = mologcli.chains:Chains',
-            'records = mologcli.records:Records'
             ],
         },
 

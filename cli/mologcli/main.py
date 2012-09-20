@@ -4,37 +4,78 @@ import sys
 sys.path.append("/opt/molog/lib/modules")
 from cliff.app import App
 from cliff.commandmanager import CommandManager
-import mologcli
+import requests
+import cmd
+from prettytable import PrettyTable
+from pymongo import Connection
 
-class MologCli(App):
+class Records(cmd.Cmd):
+    prompt = "(records) "
+    
+    def __init__(self, url):
+        cmd.Cmd.__init__(self)
+        self.url=url+"/records"
 
-    log = logging.getLogger(__name__)
-
-    def __init__(self):        
-        super(MologCli, self).__init__(
-            description='cliff demo app',
-            version='0.1',
-            command_manager=CommandManager('mologcli.plugins'),
-            )        
-
-    def initialize_app(self, argv):
+    def do_get(self, args):
+        '''Allows you to retrieve records from MoLog using following search parameters:
         
-        self.log.debug('initialize_app')
+        --id            The MoLog ID of the record.
+        --hostname      Records with the provided hostname
+        --tags          Records containing the provided tag
+        --priority      Records with the provided priority
+        
+        get --id 12345
+        
+        '''
+        r = requests.get(self.url)
+        table = PrettyTable(['ID','Hostname','Tags','Priority','Message'])
+        for record in r.json:
+            table.add_row([record['id'],record['hostname'],','.join(record['tags']),','.join(record['priority']),record['es_id']])
+        print table
+        
 
-    def prepare_to_run_command(self, cmd):
-        self.log.debug('prepare_to_run_command %s', cmd.__class__.__name__)
-        cmd.__class__.blah='kaka'
+    def do_delete(self, args):
+        pass     
+           
+    def do_quit(self, args):
+        return True
+    do_EOF = do_quit
 
-    def clean_up(self, cmd, result, err):
-        self.log.debug('clean_up %s', cmd.__class__.__name__)
-        if err:
-            self.log.debug('got an error: %s', err)
+class Chains(cmd.Cmd):
+    prompt = "(chains) "
 
+    def do_get(self, args):
+        pass
 
-def main(argv=sys.argv[1:]):
-    myapp = MologCli()
-    return myapp.run(argv)
+    def do_insert(self, args):
+        pass
 
+    def do_update(self, args):
+        pass
+
+    def do_delete(self, args):
+        pass     
+           
+    def do_quit(self, args):
+        return True
+    do_EOF = do_quit
+    
+class MologCli(cmd.Cmd):
+    
+    def __init__(self):
+        cmd.Cmd.__init__(self)
+        self.url='http://localhost:8000/v1'
+        
+    def do_records(self, args):
+        sub_cmd = Records(self.url)
+        sub_cmd.cmdloop()
+
+    def do_chains(self, args):
+        sub_cmd = Chains()
+        sub_cmd.cmdloop()
+        
+def main():
+    MologCli().cmdloop()
 
 if __name__ == '__main__':
-    sys.exit(main(sys.argv[1:]))
+    main()

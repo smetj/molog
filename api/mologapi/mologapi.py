@@ -59,7 +59,6 @@ class MologTools():
                 del(item['_id'])
                 data.append(item)
         return json.dumps(data)
-        
 
 class ReturnCodes():
  
@@ -68,7 +67,7 @@ class ReturnCodes():
     
     def generateHeader(self, data):
         return [
-            ('Content-Type', 'text/html'),
+            ('Content-Type', 'application/json'),
             ('Content-Length', str(len(data)))
         ]
             
@@ -93,7 +92,6 @@ class ReturnCodes():
         html = self.template.format('422 Unprocessable entity',err)
         start_response('422 Unprocessable entity', self.generateHeader(html))
         return [html]
-        
 
 class API_V1(ReturnCodes):
 
@@ -106,11 +104,32 @@ class API_V1(ReturnCodes):
 
         self.records=Records(self.mongo)
         self.chains=Chains(self.mongo)
+        self.debug=Debug(self.mongo)
         
     def help(self, sr, body, params, env):
         return self.code200(sr, "heeeeeeeeeeeeeeeeeelp")
-        
 
+class Debug(ReturnCodes, MologTools):
+    
+    def __init__(self, mongodb):
+        self.db=mongodb
+            
+    def get(self, sr, body, params, env):
+        print "Method: %s\nParams:\n%s\n"%("GET", params)
+        return self.code200(sr, '')
+
+    def put(self, sr, body, params, env):
+        print "Method: %s\nParams:\n%s\nBody:\n%s\n"%("PUT", params, body)
+        return self.code200(sr, '')
+        
+    def post(self, sr, body, params, env):
+        print "Method: %s\nParams:\n%s\nBody:\n%s\n"%("POST", params, body)
+        return self.code200(sr, '')
+        
+    def delete(self, sr, body, params, env):
+        print "Method: %s\nParams:\n%s\nBody:\n%s\n"%("DELETE", params, body)
+        return self.code200(sr, '')
+                
 class Records(ReturnCodes, MologTools):
 
     def __init__(self, mongodb):
@@ -140,16 +159,15 @@ class Records(ReturnCodes, MologTools):
         self.db.remove(query)
         return self.code200(sr, '')
 
-
 class Chains(ReturnCodes, MologTools):
 
     def __init__(self, mongodb):
         self.db=mongodb['chains']
         
-    def getChain(self, sr, body, params, env):
-        
+    def getChain(self, sr, body, params, env):        
         query = {'_id':ObjectId(env['id'])}
-        result = [self.db.chains.find(query)]
+        
+        result = [self.db.find_one(query)]
         result = self.generateJSON(result)
         return self.code200(sr, result)
     
@@ -163,8 +181,13 @@ class Chains(ReturnCodes, MologTools):
         return self.code200(sr, result)
     
     def insertChains(self, sr, body, params, env):
+        print body
         self.db.insert(json.loads(body))
         return self.code200(sr,'')
+    
+    def overwriteName(self, sr, body, params, env):
+        self.db.update ( {'_id':ObjectId(env['id'])}, {'$set':{'name':body}})
+        return self.code200(sr, '')
     
     def overwriteTag(self, sr, body, params, env):
         tags = self.db.find_one({'_id':ObjectId(env['id'])},{'tags':1})['tags']
@@ -217,7 +240,6 @@ class Chains(ReturnCodes, MologTools):
         del regexes[int(env['index'])]
         self.db.update ({'_id':ObjectId(env['id'])}, {'$set':{'regexes':regexes}})
         return self.code200(sr, '')
-        
 
 class Application(object):
     
@@ -228,36 +250,44 @@ class Application(object):
         self.map.connect('v1', '/v1', app=self.rest.help)
 
         #Read Records
-        self.map.connect('records', '/v1/records/{id}', app=self.rest.records.getRecord, conditions=dict(method=["GET"]))
         self.map.connect('records', '/v1/records', app=self.rest.records.getRecords, conditions=dict(method=["GET"]))
-
+        self.map.connect('records', '/v1/records/{id}', app=self.rest.records.getRecord, conditions=dict(method=["GET"]))
+        
         #Delete Records
-        self.map.connect('records', '/v1/records/{id}', app=self.rest.records.delRecord, conditions=dict(method=["DELETE"]))
         self.map.connect('records', '/v1/records', app=self.rest.records.delRecords, conditions=dict(method=["DELETE"]))
+        self.map.connect('records', '/v1/records/{id}', app=self.rest.records.delRecord, conditions=dict(method=["DELETE"]))
         
         #Read Chains
-        self.map.connect('chains', '/v1/chains/{id}', app=self.rest.chains.getChain, conditions=dict(method=["GET"]))
         self.map.connect('chains', '/v1/chains', app=self.rest.chains.getChains, conditions=dict(method=["GET"]))
-        
-        #Insert a new chain
-        self.map.connect('chains', '/v1/chains', app=self.rest.chains.insertChains, conditions=dict(method=["POST"]))
+        self.map.connect('chains', '/v1/chains/{id}', app=self.rest.chains.getChain, conditions=dict(method=["GET"]))
 
-        #Update an existing chain data (overwrite = idempotent)
+        #Delete Chains
+        self.map.connect('chains', '/v1/chains', app=self.rest.chains.delChains, conditions=dict(method=["DELETE"]))
+        self.map.connect('chains', '/v1/chains/{id}', app=self.rest.chains.delChain, conditions=dict(method=["DELETE"]))
+        self.map.connect('chains', '/v1/chains/{id}/regexes/{index}', app=self.rest.chains.delChainRegex, conditions=dict(method=["DELETE"]))
+        self.map.connect('chains', '/v1/chains/{id}/tags/{index}', app=self.rest.chains.delChainTag, conditions=dict(method=["DELETE"]))
+        
+        #Create new entry in collection
+        self.map.connect('chains', '/v1/chains', app=self.rest.chains.insertChains, conditions=dict(method=["POST"]))
+        #Replace the entire collection
         self.map.connect('chains', '/v1/chains', app=self.rest.chains.overwriteChains, conditions=dict(method=["PUT"]))
+        #Replace the entire collection item (you can not create a new collection item by providing an ID since the ID is autogenerated by MongoDB)
         self.map.connect('chains', '/v1/chains/{id}', app=self.rest.chains.overwriteChain, conditions=dict(method=["PUT"]))
+        
+        
+        self.map.connect('chains', '/v1/chains/{id}/name', app=self.rest.chains.overwriteName, conditions=dict(method=["PUT"]))
         self.map.connect('chains', '/v1/chains/{id}/tags', app=self.rest.chains.overwriteTags, conditions=dict(method=["PUT"]))
-        self.map.connect('chains', '/v1/chains/{id}/tags/{index}', app=self.rest.chains.overwriteTag, conditions=dict(method=["PUT"]))        
+        self.map.connect('chains', '/v1/chains/{id}/tags/{index}', app=self.rest.chains.overwriteTag, conditions=dict(method=["PUT"]))
         self.map.connect('chains', '/v1/chains/{id}/regexes', app=self.rest.chains.overwriteChains, conditions=dict(method=["PUT"]))
         self.map.connect('chains', '/v1/chains/{id}/regexes/{index}', app=self.rest.chains.overwriteChain, conditions=dict(method=["PUT"]))
         self.map.connect('chains', '/v1/chains/{id}/regexes/{index}/regex', app=self.rest.chains.overwriteRegex, conditions=dict(method=["PUT"]))
         self.map.connect('chains', '/v1/chains/{id}/regexes/{index}/field', app=self.rest.chains.overwriteField, conditions=dict(method=["PUT"]))
         self.map.connect('chains', '/v1/chains/{id}/regexes/{index}/type', app=self.rest.chains.overwriteType, conditions=dict(method=["PUT"]))
         
-        #Delete Chains
-        self.map.connect('chains', '/v1/chains', app=self.rest.chains.delChains, conditions=dict(method=["DELETE"]))
-        self.map.connect('chains', '/v1/chains/{id}', app=self.rest.chains.delChain, conditions=dict(method=["DELETE"]))
-        self.map.connect('chains', '/v1/chains/{id}/regexes/{index}', app=self.rest.chains.delChainRegex, conditions=dict(method=["DELETE"]))
-        self.map.connect('chains', '/v1/chains/{id}/tags/{index}', app=self.rest.chains.delChainTag, conditions=dict(method=["DELETE"]))
+        self.map.connect('debug', '/v1/debug', app=self.rest.debug.get, conditions=dict(method=["GET"]))
+        self.map.connect('debug', '/v1/debug', app=self.rest.debug.put, conditions=dict(method=["PUT"]))
+        self.map.connect('debug', '/v1/debug', app=self.rest.debug.post, conditions=dict(method=["POST"]))
+        self.map.connect('debug', '/v1/debug', app=self.rest.debug.delete, conditions=dict(method=["DELETE"]))
         
     def __call__(self, environ, start_response):
         match = self.map.routematch(environ=environ)
