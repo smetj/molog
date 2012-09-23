@@ -87,7 +87,7 @@ class Matches(PrimitiveActor,MongoTools):
 
     def extendDocument(self,doc, tags, name):
         '''extends a document with MoLog specific data.'''
-        doc['@molog'] = {'chain':name,'tags': tags}
+        doc['data']['@molog'] = {'chain':name,'tags': tags}
     
     def countMongo(self,host):
         '''Counting the amount of objects we already have referenced.'''
