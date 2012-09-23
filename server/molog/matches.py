@@ -52,7 +52,7 @@ class Matches(PrimitiveActor,MongoTools):
         '''For each message received, run through all defined chains and look for a match.'''
         for chain in self.conn.molog.chains.find():
             if self.__checkMatch(chain, doc):
-                self.writeMongo(doc, chain['tags'], chain['name'])
+                self.extendDocument(doc, chain['tags'], chain['name'])
                 (doc['header']['warning'], doc['header']['critical'])=self.countMongo(doc['data']['@source_host'])
                 doc['header']['name']=chain['name']
             else:
