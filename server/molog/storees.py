@@ -46,7 +46,7 @@ class StoreES(PrimitiveActor, ESTools):
         self.setupConnection()
         
     def consume(self, doc):
-        doc['header']['es_reference'] = self.es_index(json.dumps(doc["data"]),"logstash-%s.%s.%s"%(date.today().year, date.today().month, date.today().day),doc['data']['@type'])
+        self.es_index(json.dumps(doc["data"]),"logstash-%s.%s.%s"%(date.today().year, date.today().month, date.today().day),doc['data']['@type'])
         self.sendData(doc)
 
 class Filter(PrimitiveActor):

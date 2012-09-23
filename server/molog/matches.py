@@ -85,9 +85,9 @@ class Matches(PrimitiveActor,MongoTools):
                 return True
         return False
 
-    def writeMongo(self,doc, tags, name):
-        '''Writes a matched document reference into MongoDB.'''
-        self.conn.molog.references.insert({'timestamp':doc['data']['@timestamp'],'chain':name,'es_id':doc['header']['es_reference']['_id'],'hostname':doc['data']['@source_host'],'tags': tags})
+    def extendDocument(self,doc, tags, name):
+        '''extends a document with MoLog specific data.'''
+        doc['@molog'] = {'chain':name,'tags': tags}
     
     def countMongo(self,host):
         '''Counting the amount of objects we already have referenced.'''
