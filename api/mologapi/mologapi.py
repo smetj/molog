@@ -37,7 +37,10 @@ import json
 import sys
 import inspect
 import urlparse
+import pyes
 from pymongo import Connection
+from pyes import ES
+from pyes import query as esquery
 from bson.objectid import ObjectId
 
 class MologTools():
@@ -95,14 +98,15 @@ class ReturnCodes():
 
 class API_V1(ReturnCodes):
 
-    def __init__(self, host='localhost', db='molog'):
+    def __init__(self, mongohost='localhost', mongodb='molog', eshost='localhost'):
         try:
-            self.mongo = Connection(host)[db]
+            self.mongo = Connection(mongohost)[mongodb]
+            self.es = ES("%s:9200"%(eshost))
         except Exception as err:
             print sys.stderr.write('Could not connect to MongoDB. Reason: %s'%err)
             sys.exit(1)
 
-        self.records=Records(self.mongo)
+        self.records=Records(self.mongo, self.es)
         self.chains=Chains(self.mongo)
         self.debug=Debug(self.mongo)
         
@@ -132,19 +136,22 @@ class Debug(ReturnCodes, MologTools):
                 
 class Records(ReturnCodes, MologTools):
 
-    def __init__(self, mongodb):
+    def __init__(self, mongodb, es):
         self.db=mongodb['references']
+        self.es=es
     
     def getRecord(self, sr, body, params, env):
         query = {'_id':ObjectId(env['id'])}
-        result = self.db.find(query)
-        result = self.generateJSON(result)
+        result = self.db.find_one(query)
+        result['message'] = self.getEsMessage(result['es_id'])
+        result = self.generateJSON([result])
         return self.code200(sr, result)
     
     def getRecords(self, sr, body, params, env):
         result=[]
-        query = self.buildQuery(params,[ 'hostname', 'priority', 'tags' ])
-        for reference in self.db.find(query).limit(params.get('limit',0)):
+        query = self.buildQuery(params,[ 'hostname', 'chain', 'tags' ])
+        for reference in self.db.find(query).limit(int(params.get('limit',0))):
+            reference['message'] = self.getEsMessage(reference['es_id'])
             result.append(reference)
         result = self.generateJSON(result)
         return self.code200(sr, result)
@@ -159,6 +166,8 @@ class Records(ReturnCodes, MologTools):
         self.db.remove(query)
         return self.code200(sr, '')
 
+    def getEsMessage(self, id):
+        return self.es.search(esquery.IdsQuery(id))[0]['@message']
 class Chains(ReturnCodes, MologTools):
 
     def __init__(self, mongodb):
@@ -244,7 +253,7 @@ class Chains(ReturnCodes, MologTools):
 class Application(object):
     
     def __init__(self):
-        self.rest = API_V1(host='sandbox', db='molog')
+        self.rest = API_V1(mongohost='sandbox', mongodb='molog', eshost='sandbox')
         self.answer = ReturnCodes()
         self.map = Mapper()
         self.map.connect('v1', '/v1', app=self.rest.help)
