@@ -36,9 +36,9 @@ def setup():
 
         #Connecting the dots
         wb.connect (wb.broker.inbox, wb.validateLogStashData.inbox)
-        wb.connect (wb.validateLogStashData.outbox, wb.store_es.inbox)
-        wb.connect (wb.store_es.outbox, wb.matches.inbox)
-        wb.connect (wb.matches.outbox, wb.nagiosCheckResult.inbox)
+        wb.connect (wb.validateLogStashData.outbox, wb.matches.inbox)
+        wb.connect (wb.matches.outbox, wb.store_es.inbox)
+        wb.connect (wb.store_es.outbox, wb.nagiosCheckResult.inbox)
         wb.connect (wb.nagiosCheckResult.outbox, wb.broker.outbox)        
         
         wb.start()

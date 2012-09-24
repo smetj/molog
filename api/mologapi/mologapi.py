@@ -39,8 +39,9 @@ import inspect
 import urlparse
 import pyes
 from pymongo import Connection
-from pyes import ES
-from pyes import query as esquery
+import pyes
+#from pyes import ES, q
+#from pyes import query as esquery
 from bson.objectid import ObjectId
 
 class MologTools():
@@ -101,7 +102,7 @@ class API_V1(ReturnCodes):
     def __init__(self, mongohost='localhost', mongodb='molog', eshost='localhost'):
         try:
             self.mongo = Connection(mongohost)[mongodb]
-            self.es = ES("%s:9200"%(eshost))
+            self.es = pyes.ES("%s:9200"%(eshost))
         except Exception as err:
             print sys.stderr.write('Could not connect to MongoDB. Reason: %s'%err)
             sys.exit(1)
@@ -140,21 +141,28 @@ class Records(ReturnCodes, MologTools):
         self.db=mongodb['references']
         self.es=es
     
+    def queryBuilder(self, params):
+        query = pyes.query.BoolQuery()
+        for item in [ 'logsource', '@molog.chain', '@molog.tags' ]:
+            if params.get(item,None) != None:
+                query.add_must(pyes.query.TextQuery(item,params[item]))
+        filter = pyes.filters.BoolFilter()
+        filter.add_must(pyes.filters.LimitFilter(params.get('limit',100)))
+        filter.add_must(pyes.filters.ExistsFilter('@molog.chain'))
+        return pyes.query.FilteredQuery(query, filter)
+            
     def getRecord(self, sr, body, params, env):
-        query = {'_id':ObjectId(env['id'])}
-        result = self.db.find_one(query)
-        result['message'] = self.getEsMessage(result['es_id'])
-        result = self.generateJSON([result])
-        return self.code200(sr, result)
+        search = pyes.query.IdsQuery(env['id'])
+        result = json.dumps(self.es.search(query=search)[0:])
+        return self.code200(sr, result) 
     
     def getRecords(self, sr, body, params, env):
         result=[]
-        query = self.buildQuery(params,[ 'hostname', 'chain', 'tags' ])
-        for reference in self.db.find(query).limit(int(params.get('limit',0))):
-            reference['message'] = self.getEsMessage(reference['es_id'])
+        q = self.queryBuilder(params)
+        for reference in self.es.search(query=q,scan=True):
+            reference['@molog']['id']=reference._meta.id
             result.append(reference)
-        result = self.generateJSON(result)
-        return self.code200(sr, result)
+        return self.code200(sr, json.dumps(result))
         
     def delRecord(self, sr, body, params, env):
         query = {'_id':ObjectId(env['id'])}
@@ -168,6 +176,7 @@ class Records(ReturnCodes, MologTools):
 
     def getEsMessage(self, id):
         return self.es.search(esquery.IdsQuery(id))[0]['@message']
+
 class Chains(ReturnCodes, MologTools):
 
     def __init__(self, mongodb):
