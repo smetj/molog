@@ -66,9 +66,13 @@ class Matches(PrimitiveActor,MongoTools):
                 if self.__match(chain['name'],regex, doc['data'][regex['field']] ) == False:
                     return False
             elif doc['data']['@fields'].has_key(regex['field']):
-                for value in doc['data']['@fields'][regex['field']]:
-                    if self.__match(chain['name'],regex, value ) == False:
-                        return False
+                if isinstance(doc['data']['@fields'][regex['field']],list):
+                    for value in doc['data']['@fields'][regex['field']]:
+                        if self.__match(chain['name'],regex, value ) == False:
+                            return False
+                else:
+                    if self.__match(chain['name'],regex, doc['data']['@fields'][regex['field']] ) == False:
+                            return False
             else:
                 return False
         return True                    
@@ -76,11 +80,11 @@ class Matches(PrimitiveActor,MongoTools):
     def __match(self, name, regex, data):
         '''Do some actual regex matching.'''
         if regex['type'] == 'positive':
-            if match(regex['regex'], data):
+            if match(regex['regex'], str(data)):
                 self.logging.debug ('%s - Positive match: %s' % (name, data))
                 return True
         elif rule['type'] == 'negative':
-            if not match(regex['regex'], data):
+            if not match(regex['regex'], str(data)):
                 self.logging.debug ('%s - Negative match= %s' % (name, data))
                 return True
         return False
@@ -94,7 +98,6 @@ class Matches(PrimitiveActor,MongoTools):
 
         return ( self.conn.molog.references.find({'hostname':host,'priority': { "$in":self.warning}}).count(), 
         self.conn.molog.references.find({'hostname':host,'priority': { "$in":self.critical}}).count() )
-        
     
     def shutdown(self):
         try:

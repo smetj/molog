@@ -24,7 +24,7 @@
 
 from wishbone import Wishbone
 from wishbone.server import ParallelServer
-from logging import DEBUG
+from logging import DEBUG, INFO
 
 def setup():
         wb = Wishbone()

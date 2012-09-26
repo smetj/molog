@@ -11,7 +11,10 @@ from prettytable import PrettyTable
 from pymongo import Connection
 
 class Records(cmd.Cmd):
-    prompt = "(records) "
+    '''
+    Allows you to query, display and delete records which matched one of the Chains.
+    '''
+    prompt = "(molog records) "
     
     def __init__(self, url):
         cmd.Cmd.__init__(self)
@@ -26,7 +29,6 @@ class Records(cmd.Cmd):
         --chain         Records with the provided priority.
         --message       Performa a search on the message using an ES text query.
         --limit         Limit the amount of records returned.
-        --all           Includes all columns.
         
         Examples: 
             - Get the last 5 records
@@ -69,22 +71,28 @@ class Records(cmd.Cmd):
             else:
                 url = self.url
             r = requests.get(url,params=a)
-            if len(r.json) == 0:
+            if r.json == None or len(r.json) == 0:
                 print "Your query didn't return any matches."
+                print "Answer status code: %s"%(r.status_code)
             else:
                 for record in r.json:
                     table.add_row([record['@molog']['id'],','.join(record['@molog']['tags']),record['@molog']['chain'],record['@message']])
                 print table
-        
+                print "Answer status code: %s"%(r.status_code)
 
     def do_del(self, args):
-        '''Allows you to delete MoLog registered LogStash records:
+        '''Allows you to delete MoLog registered LogStash records.
+        
+        Deleting is actually removing the @molog item from the document.
+        Since ES 0.20 isn't out yet, we don't have yet support for update by query.
+        As a consequence, deleting the references (actually updating the document) can take a long time.
             
             --id            The MoLog ID of the record.
             --logsource     Records with the provided hostname.
             --tags          Records containing the provided tag.
             --chain         Records with the provided priority.
             --message       Performa a search on the message using an ES text query.
+            --limit         Define the amount of records. By default 100
             
             Examples:               
                 - Delete 1 specific record
@@ -97,6 +105,7 @@ class Records(cmd.Cmd):
         parser.add_argument('--tags',required=False)
         parser.add_argument('--chain',required=False)
         parser.add_argument('--message',required=False)
+        parser.add_argument('--limit',required=False)
         
         try:
             a = vars(parser.parse_args(args.split()))
@@ -115,15 +124,20 @@ class Records(cmd.Cmd):
             
             r = requests.delete(url,params=a)
             print "Answer status code: %s"%(r.status_code)
-            
-                 
            
     def do_quit(self, args):
+        '''Exits the client.'''
+        sys.exit(1)
+    
+    def do_exit(self, args):
+        '''Goes back to the cli root.'''
         return True
-    do_EOF = do_quit
+
 
 class Chains(cmd.Cmd):
-    prompt = "(chains) "
+    '''
+    '''
+    prompt = "(molog chains) "
 
     def do_get(self, args):
         pass
@@ -138,11 +152,15 @@ class Chains(cmd.Cmd):
         pass     
            
     def do_quit(self, args):
+        sys.exit(1)
+    
+    def do_exit(self, args):
         return True
+    
     do_EOF = do_quit
     
 class MologCli(cmd.Cmd):
-    
+    prompt = "(molog) "
     def __init__(self):
         cmd.Cmd.__init__(self)
         self.url='http://localhost:8000/v1'

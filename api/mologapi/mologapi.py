@@ -42,8 +42,6 @@ import requests
 from random import randint
 from pymongo import Connection
 import pyes
-#from pyes import ES, q
-#from pyes import query as esquery
 from bson.objectid import ObjectId
 
 class MologTools():
@@ -144,16 +142,16 @@ class Records(ReturnCodes, MologTools):
         self.es=es
     
     def queryBuilder(self, params):
-        if len(params) > 0:
+        if len(params) == 0 or (len(params) == 1 and params.has_key('limit')):
+            query = pyes.query.MatchAllQuery()        
+        elif len(params) > 0:
             query = pyes.query.BoolQuery()
             for item in [ 'logsource', '@molog.chain', '@molog.tags', '@message' ]:
                 if params.get(item,None) != None:
                     query.add_must(pyes.query.TextQuery(item,params[item]))
-        else:
-            query = pyes.query.MatchAllQuery()
         
         filter = pyes.filters.BoolFilter()
-        #filter.add_must(pyes.filters.LimitFilter(params.get('limit',100)))
+        #filter.add_must(pyes.filters.LimitFilter(params.get('limit',10)))
         filter.add_must(pyes.filters.ExistsFilter('@molog.chain'))
         return pyes.query.FilteredQuery(query, filter)
             
@@ -166,7 +164,7 @@ class Records(ReturnCodes, MologTools):
     def getRecords(self, sr, body, params, env):
         result=[]
         q = self.queryBuilder(params)
-        for reference in self.es.search(query=q,scan=True):
+        for reference in self.es.search(query=q,size=int(params.get('limit',100))):
             reference['@molog']['id']=reference._meta.id
             result.append(reference)
             #ToDo(Jelle): better to create an iterable here. This will explode with big datasets.
@@ -182,7 +180,7 @@ class Records(ReturnCodes, MologTools):
     
     def delRecords(self, sr, body, params, env):
         q = self.queryBuilder(params)
-        for record in self.es.search(query=q,scan=True):
+        for record in self.es.search(query=q,size=int(params.get('limit',100))):
             record['@molog']['id']=record._meta.id
             self.executeUpdate(record._meta.index,record._meta.type,record._meta.id)
         return self.code200(sr, '')
@@ -353,6 +351,7 @@ class Application(object):
             try:
                 return match[0]['app'](start_response, body, params, match[0])
             except Exception as err:
+                print err
                 return self.answer.code422(start_response, str(err))
                 
             
