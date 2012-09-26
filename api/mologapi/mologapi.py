@@ -38,6 +38,8 @@ import sys
 import inspect
 import urlparse
 import pyes
+import requests
+from random import randint
 from pymongo import Connection
 import pyes
 #from pyes import ES, q
@@ -142,19 +144,24 @@ class Records(ReturnCodes, MologTools):
         self.es=es
     
     def queryBuilder(self, params):
-        query = pyes.query.BoolQuery()
-        for item in [ 'logsource', '@molog.chain', '@molog.tags' ]:
-            if params.get(item,None) != None:
-                query.add_must(pyes.query.TextQuery(item,params[item]))
+        if len(params) > 0:
+            query = pyes.query.BoolQuery()
+            for item in [ 'logsource', '@molog.chain', '@molog.tags', '@message' ]:
+                if params.get(item,None) != None:
+                    query.add_must(pyes.query.TextQuery(item,params[item]))
+        else:
+            query = pyes.query.MatchAllQuery()
+        
         filter = pyes.filters.BoolFilter()
-        filter.add_must(pyes.filters.LimitFilter(params.get('limit',100)))
+        #filter.add_must(pyes.filters.LimitFilter(params.get('limit',100)))
         filter.add_must(pyes.filters.ExistsFilter('@molog.chain'))
         return pyes.query.FilteredQuery(query, filter)
             
     def getRecord(self, sr, body, params, env):
         search = pyes.query.IdsQuery(env['id'])
-        result = json.dumps(self.es.search(query=search)[0:])
-        return self.code200(sr, result) 
+        record = self.es.search(query=search)[0]
+        record['@molog']['id']=record._meta.id
+        return self.code200(sr, json.dumps([record])) 
     
     def getRecords(self, sr, body, params, env):
         result=[]
@@ -162,21 +169,45 @@ class Records(ReturnCodes, MologTools):
         for reference in self.es.search(query=q,scan=True):
             reference['@molog']['id']=reference._meta.id
             result.append(reference)
+            #ToDo(Jelle): better to create an iterable here. This will explode with big datasets.
+            #Todo(Jelle): Paginate?
         return self.code200(sr, json.dumps(result))
         
     def delRecord(self, sr, body, params, env):
-        query = {'_id':ObjectId(env['id'])}
-        self.db.remove(query)
+        search = pyes.query.IdsQuery(env['id'])
+        record = self.es.search(query=search)[0]
+        record['@molog']['id']=record._meta.id
+        self.executeUpdate(record._meta.index,record._meta.type,record._meta.id)
         return self.code200(sr, '')
     
     def delRecords(self, sr, body, params, env):
-        query = query = self.buildQuery(params,[ 'hostname', 'priority', 'tags' ])
-        self.db.remove(query)
+        q = self.queryBuilder(params)
+        for record in self.es.search(query=q,scan=True):
+            record['@molog']['id']=record._meta.id
+            self.executeUpdate(record._meta.index,record._meta.type,record._meta.id)
         return self.code200(sr, '')
 
     def getEsMessage(self, id):
         return self.es.search(esquery.IdsQuery(id))[0]['@message']
 
+    def executeUpdate(self, index, type, id):
+        '''This function is available awaiting the release of https://github.com/elasticsearch/elasticsearch/issues/2230
+         Runs over a list of records and does a manual update of them.
+         This is going to be slow, but better than nothing.  Also pyes doesn't support _update yet. So we'll do 
+         manual calls.  In other words, you arrived in the tarpit.
+         
+         The update itself involved deleting the @molog key of the document.
+              
+        Parameters:
+            * index     : 
+            * type      :
+            * id        :            
+        '''
+                
+        url = '%s/%s/%s/%s/_update' % (self.es.connection._active_servers[randint(0,len(self.es.connection._active_servers)-1)],index,type,id)
+        payload = {'script':'ctx._source.remove("@molog")'}
+        result = requests.post(url,data=json.dumps(payload))
+        
 class Chains(ReturnCodes, MologTools):
 
     def __init__(self, mongodb):
@@ -319,7 +350,11 @@ class Application(object):
             params = urlparse.parse_qs(url.query)
             for param in params:
                 params[param]=params[param][0]
-            return match[0]['app'](start_response, body, params, match[0])
+            try:
+                return match[0]['app'](start_response, body, params, match[0])
+            except Exception as err:
+                return self.answer.code422(start_response, str(err))
+                
             
 
 molog = Application()

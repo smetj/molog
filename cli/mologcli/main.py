@@ -24,7 +24,9 @@ class Records(cmd.Cmd):
         --hostname      Records with the provided hostname.
         --tags          Records containing the provided tag.
         --chain         Records with the provided priority.
+        --message       Performa a search on the message using an ES text query.
         --limit         Limit the amount of records returned.
+        --all           Includes all columns.
         
         Examples: 
             - Get the last 5 records
@@ -35,24 +37,33 @@ class Records(cmd.Cmd):
                 
             - Get the records with tag "nagiosWarning" for host "celest".
                 (records) get --tags nagiosWarning --hostname celest
+                
+            - Get the records which contain test
+                (records) get --message test
             
         
         '''
-        table = PrettyTable(['Timestamp','ID','Hostname','Tags','Chain'])
+        table = PrettyTable(['ID','Tags','Chain'])
         table.add_column('Message',[], align='l')
         
         parser = argparse.ArgumentParser()
         parser.add_argument('--id',required=False)
-        parser.add_argument('--hostname',required=False)
+        parser.add_argument('--logsource',required=False)
         parser.add_argument('--tags',required=False)
         parser.add_argument('--chain',required=False)
+        parser.add_argument('--message',required=False)
         parser.add_argument('--limit',required=False)
+        #ToDo(Jelle): implement pagination in api and deal with it instead of --limit (ES supports this.)
         
         try:
             a = vars(parser.parse_args(args.split()))
         except SystemExit as err:
             print "Invalid input: %s" % err
         else:
+            #ToDo(Jelle): Ugly translate need to figure out something better here.
+            a['@molog.tags']=a['tags']
+            a['@molog.chain']=a['chain']
+            a['@message']=a['message']
             if a['id'] != None:
                 url = '%s/%s'%(self.url,a['id'])
             else:
@@ -62,12 +73,50 @@ class Records(cmd.Cmd):
                 print "Your query didn't return any matches."
             else:
                 for record in r.json:
-                    table.add_row([record['timestamp'],record['id'],record['hostname'],','.join(record['tags']),record['chain'],record['message']])
+                    table.add_row([record['@molog']['id'],','.join(record['@molog']['tags']),record['@molog']['chain'],record['@message']])
                 print table
         
 
-    def do_delete(self, args):
-        pass     
+    def do_del(self, args):
+        '''Allows you to delete MoLog registered LogStash records:
+            
+            --id            The MoLog ID of the record.
+            --logsource     Records with the provided hostname.
+            --tags          Records containing the provided tag.
+            --chain         Records with the provided priority.
+            --message       Performa a search on the message using an ES text query.
+            
+            Examples:               
+                - Delete 1 specific record
+                    (records) delete --id 12345
+        '''   
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument('--id',required=False)
+        parser.add_argument('--logsource',required=False)
+        parser.add_argument('--tags',required=False)
+        parser.add_argument('--chain',required=False)
+        parser.add_argument('--message',required=False)
+        
+        try:
+            a = vars(parser.parse_args(args.split()))
+        except SystemExit as err:
+            print "Invalid input: %s" % err
+        else:
+            #ToDo(Jelle): Ugly translate need to figure out something better here.
+            a['@molog.tags']=a['tags']
+            a['@molog.chain']=a['chain']
+            a['@message']=a['message']
+            
+            if a['id'] != None:
+                url = '%s/%s'%(self.url,a['id'])
+            else:
+                url = self.url
+            
+            r = requests.delete(url,params=a)
+            print "Answer status code: %s"%(r.status_code)
+            
+                 
            
     def do_quit(self, args):
         return True
