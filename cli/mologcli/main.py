@@ -142,7 +142,7 @@ class Chains(cmd.Cmd):
         cmd.Cmd.__init__(self)
         self.url=url+"/chains"
         
-    def do_get(self, args):
+    def do_list(self, args):
         '''Allows you to retrieve the LogStash chains:
         
         --id        The ID of the chain.      
@@ -150,7 +150,11 @@ class Chains(cmd.Cmd):
         --tags      The tag(s) of the chain.
         '''
         
-        table = PrettyTable(['ID','Tags','Chain'])
+        table = PrettyTable()
+        table.add_column('ID',[], align='l')
+        table.add_column('Tags',[], align='l')
+        table.add_column('Name',[], align='l')        
+        
         parser = argparse.ArgumentParser()
         parser.add_argument('--id',required=False)
         parser.add_argument('--name',required=False)
@@ -182,11 +186,13 @@ class Chains(cmd.Cmd):
         --name          The name of the chain.
         '''
         
-        table = PrettyTable()
-        table.add_column('Index',[], align='l')
-        table.add_column('Type',[], align='l')
-        table.add_column('Field',[], align='l')
-        table.add_column('Regex',[], align='l')
+        def makeTable():
+            table = PrettyTable()
+            table.add_column('Index',[], align='l')
+            table.add_column('Type',[], align='l')
+            table.add_column('Field',[], align='l')
+            table.add_column('Regex',[], align='l')
+            return table
         
         parser = argparse.ArgumentParser()
         parser.add_argument('--id',required=False)
@@ -206,11 +212,18 @@ class Chains(cmd.Cmd):
                 print "Your query didn't return any matches."
                 print "Answer status code: %s"%(r.status_code)
             else:
-                counter=0
-                for regex in r.json[0]['regexes']:
-                    table.add_row([counter,regex['type'],regex['field'],regex['regex']])
-                    counter+=1
-                print table
+                
+                for chain in r.json:
+                    table = makeTable()
+                    counter=0
+                    print chain['name']
+                    print '-' * len (chain['name'])      
+                    for regex in chain['regexes']:
+                        table.add_row([counter,regex['type'],regex['field'],regex['regex']])
+                        counter+=1
+                    print table
+                    print
+                    
                 print "Answer status code: %s"%(r.status_code)
 
 
@@ -230,8 +243,6 @@ class Chains(cmd.Cmd):
         return True
     
     do_EOF = do_quit
-    
-    do_list = do_get
     
 class MologCli(cmd.Cmd):
     prompt = "(molog) "
