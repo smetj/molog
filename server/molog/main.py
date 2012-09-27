@@ -44,7 +44,7 @@ def setup():
         wb.start()
         
 def main():        
-    server = ParallelServer(instances=1, setup=setup, daemonize=False, name='moncli', log_level=DEBUG)
+    server = ParallelServer(instances=5, setup=setup, daemonize=False, name='moncli', log_level=INFO)
     server.start()
 
 if __name__ == '__main__':

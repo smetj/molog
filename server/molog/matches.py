@@ -23,6 +23,7 @@
 #       
 
 from re import match
+from json import dumps
 from wishbone.toolkit import PrimitiveActor
 from wishbone.tools.mongotools import MongoTools
 
@@ -53,10 +54,9 @@ class Matches(PrimitiveActor,MongoTools):
         for chain in self.conn.molog.chains.find():
             if self.__checkMatch(chain, doc):
                 self.extendDocument(doc, chain['tags'], chain['name'])
-                (doc['header']['warning'], doc['header']['critical'])=self.countMongo(doc['data']['@source_host'])
                 doc['header']['name']=chain['name']
             else:
-                self.logging.debug ('%s - No match for %s' % (chain['name'],doc['data']['@message']))
+                self.logging.debug ('%s - No match for %s' % (chain['name'],dumps(doc['data'])))
         self.sendData(doc)
     
     def __checkMatch(self, chain, doc):
@@ -74,24 +74,35 @@ class Matches(PrimitiveActor,MongoTools):
                     if self.__match(chain['name'],regex, doc['data']['@fields'][regex['field']] ) == False:
                             return False
             else:
+                self.logging.debug ('Field %s could not be found for message %s'%(regex['field'],dumps(doc['data'])))
                 return False
         return True                    
             
     def __match(self, name, regex, data):
         '''Do some actual regex matching.'''
-        if regex['type'] == 'positive':
+        if regex['type'] == 'include':
             if match(regex['regex'], str(data)):
-                self.logging.debug ('%s - Positive match: %s' % (name, data))
+                self.logging.debug ('%s - Include match using %s: %s' % (name, regex['regex'], data))
                 return True
-        elif rule['type'] == 'negative':
+        elif regex['type'] == 'exclude':
             if not match(regex['regex'], str(data)):
-                self.logging.debug ('%s - Negative match= %s' % (name, data))
+                self.logging.debug ('%s - Exclude match using %s: %s' % (name, regex['regex'], data))
                 return True
         return False
 
     def extendDocument(self,doc, tags, name):
-        '''extends a document with MoLog specific data.'''
-        doc['data']['@molog'] = {'chain':name,'tags': tags}
+        '''Extends a document with MoLog specific data.
+        I initially planned to add a dictionary, but that would limit the query possibilities through Kibana.
+        Kibana also doesn't seem to cope well with assigning True/False values, so I made this a string value instead.
+        
+        The best of all, there appears to be a bug in ElasticSearch:
+            https://github.com/elasticsearch/elasticsearch/issues/2293
+        
+        That's why *HAVE* to use molog_ack and not @molog_ack
+        '''
+        doc['data']['@molog_chain'] = name
+        doc['data']['@molog_tags'] = tags
+        doc['data']['@molog_ack'] = 'false'
     
     def countMongo(self,host):
         '''Counting the amount of objects we already have referenced.'''

@@ -14,7 +14,7 @@ class Records(cmd.Cmd):
     '''
     Allows you to query, display and delete records which matched one of the Chains.
     '''
-    prompt = "(molog records) "
+    prompt = "(molog:records) "
     
     def __init__(self, url):
         cmd.Cmd.__init__(self)
@@ -63,8 +63,8 @@ class Records(cmd.Cmd):
             print "Invalid input: %s" % err
         else:
             #ToDo(Jelle): Ugly translate need to figure out something better here.
-            a['@molog.tags']=a['tags']
-            a['@molog.chain']=a['chain']
+            a['@molog_tags']=a['tags']
+            a['@molog_chain']=a['chain']
             a['@message']=a['message']
             if a['id'] != None:
                 url = '%s/%s'%(self.url,a['id'])
@@ -76,7 +76,7 @@ class Records(cmd.Cmd):
                 print "Answer status code: %s"%(r.status_code)
             else:
                 for record in r.json:
-                    table.add_row([record['@molog']['id'],','.join(record['@molog']['tags']),record['@molog']['chain'],record['@message']])
+                    table.add_row([record['@molog_id'],','.join(record['@molog_tags']),record['@molog_chain'],record['@message']])
                 print table
                 print "Answer status code: %s"%(r.status_code)
 
@@ -132,12 +132,13 @@ class Records(cmd.Cmd):
     def do_exit(self, args):
         '''Goes back to the cli root.'''
         return True
-
+    
+    do_list = do_get
 
 class Chains(cmd.Cmd):
     '''
     '''
-    prompt = "(molog chains) "
+    prompt = "(molog:chains) "
 
     def do_get(self, args):
         pass

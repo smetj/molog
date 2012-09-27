@@ -146,42 +146,39 @@ class Records(ReturnCodes, MologTools):
             query = pyes.query.MatchAllQuery()        
         elif len(params) > 0:
             query = pyes.query.BoolQuery()
-            for item in [ 'logsource', '@molog.chain', '@molog.tags', '@message' ]:
+            for item in [ 'logsource', '@molog_chain', '@molog_tags', '@message' ]:
                 if params.get(item,None) != None:
                     query.add_must(pyes.query.TextQuery(item,params[item]))
-        
         filter = pyes.filters.BoolFilter()
-        #filter.add_must(pyes.filters.LimitFilter(params.get('limit',10)))
-        filter.add_must(pyes.filters.ExistsFilter('@molog.chain'))
+        filter.add_must(pyes.filters.ExistsFilter(field='@molog_ack'))
         return pyes.query.FilteredQuery(query, filter)
             
     def getRecord(self, sr, body, params, env):
         search = pyes.query.IdsQuery(env['id'])
         record = self.es.search(query=search)[0]
-        record['@molog']['id']=record._meta.id
+        record['@molog_id']=record._meta.id
         return self.code200(sr, json.dumps([record])) 
     
     def getRecords(self, sr, body, params, env):
         result=[]
         q = self.queryBuilder(params)
-        for reference in self.es.search(query=q,size=int(params.get('limit',100))):
-            reference['@molog']['id']=reference._meta.id
-            result.append(reference)
-            #ToDo(Jelle): better to create an iterable here. This will explode with big datasets.
-            #Todo(Jelle): Paginate?
+        for record in self.es.search(query=q,size=int(params.get('limit',100)),sort='@timestamp:desc'):
+            record['@molog_id']=record._meta.id
+            result.append(record)
+            #ToDo(Jelle): Figure out how to do pagination here.
         return self.code200(sr, json.dumps(result))
         
     def delRecord(self, sr, body, params, env):
         search = pyes.query.IdsQuery(env['id'])
         record = self.es.search(query=search)[0]
-        record['@molog']['id']=record._meta.id
+        record['@molog_id']=record._meta.id
         self.executeUpdate(record._meta.index,record._meta.type,record._meta.id)
         return self.code200(sr, '')
     
     def delRecords(self, sr, body, params, env):
         q = self.queryBuilder(params)
-        for record in self.es.search(query=q,size=int(params.get('limit',100))):
-            record['@molog']['id']=record._meta.id
+        for record in self.es.search(query=q,size=int(params.get('limit',100)),sort='@timestamp:desc'):
+            record['@molog_id']=record._meta.id
             self.executeUpdate(record._meta.index,record._meta.type,record._meta.id)
         return self.code200(sr, '')
 
@@ -191,8 +188,8 @@ class Records(ReturnCodes, MologTools):
     def executeUpdate(self, index, type, id):
         '''This function is available awaiting the release of https://github.com/elasticsearch/elasticsearch/issues/2230
          Runs over a list of records and does a manual update of them.
-         This is going to be slow, but better than nothing.  Also pyes doesn't support _update yet. So we'll do 
-         manual calls.  In other words, you arrived in the tarpit.
+         This is going to be slow, but better than nothing.  Also pyes doesn't support _update yet. So we'll have to do 
+         manual calls.  In other words, you arrived to the tarpit.
          
          The update itself involved deleting the @molog key of the document.
               
@@ -203,7 +200,7 @@ class Records(ReturnCodes, MologTools):
         '''
                 
         url = '%s/%s/%s/%s/_update' % (self.es.connection._active_servers[randint(0,len(self.es.connection._active_servers)-1)],index,type,id)
-        payload = {'script':'ctx._source.remove("@molog")'}
+        payload = {'script':'ctx._source.remove("@molog_ack")'}
         result = requests.post(url,data=json.dumps(payload))
         
 class Chains(ReturnCodes, MologTools):
