@@ -11,9 +11,7 @@ from prettytable import PrettyTable
 from pymongo import Connection
 
 class Records(cmd.Cmd):
-    '''
-    Allows you to query, display and delete records which matched one of the Chains.
-    '''
+    
     prompt = "(molog:records) "
     
     def __init__(self, url):
@@ -23,7 +21,7 @@ class Records(cmd.Cmd):
     def do_get(self, args):
         '''Allows you to retrieve the LogStash records which matched one or more of the defined chains:
         
-        --id            The MoLog ID of the record.
+        --id            The ID of the record.
         --hostname      Records with the provided hostname.
         --tags          Records containing the provided tag.
         --chain         Records with the provided priority.
@@ -140,8 +138,81 @@ class Chains(cmd.Cmd):
     '''
     prompt = "(molog:chains) "
 
+    def __init__(self, url):
+        cmd.Cmd.__init__(self)
+        self.url=url+"/chains"
+        
     def do_get(self, args):
-        pass
+        '''Allows you to retrieve the LogStash chains:
+        
+        --id        The ID of the chain.      
+        --name      The name of the chain.
+        --tags      The tag(s) of the chain.
+        '''
+        
+        table = PrettyTable(['ID','Tags','Chain'])
+        parser = argparse.ArgumentParser()
+        parser.add_argument('--id',required=False)
+        parser.add_argument('--name',required=False)
+        parser.add_argument('--tags',required=False)
+        
+        try:
+            a = vars(parser.parse_args(args.split()))
+        except SystemExit as err:
+            print "Invalid input: %s" % err
+        else:
+            if a['id'] != None:
+                url = '%s/%s'%(self.url,a['id'])
+            else:
+                url = self.url
+            r = requests.get(url,params=a)
+            if r.json == None or len(r.json) == 0:
+                print "Your query didn't return any matches."
+                print "Answer status code: %s"%(r.status_code)
+            else:
+                for record in r.json:
+                    table.add_row([record['id'],','.join(record['tags']),record['name']])
+                print table
+                print "Answer status code: %s"%(r.status_code)
+
+    def do_show(self, args):
+        '''Shows the content of a chain.
+        
+        -- id           The ID of the chain.
+        --name          The name of the chain.
+        '''
+        
+        table = PrettyTable()
+        table.add_column('Index',[], align='l')
+        table.add_column('Type',[], align='l')
+        table.add_column('Field',[], align='l')
+        table.add_column('Regex',[], align='l')
+        
+        parser = argparse.ArgumentParser()
+        parser.add_argument('--id',required=False)
+        parser.add_argument('--name',required=False)
+
+        try:
+            a = vars(parser.parse_args(args.split()))
+        except SystemExit as err:
+            print "Invalid input: %s" % err
+        else:
+            if a['id'] != None:
+                url = '%s/%s'%(self.url,a['id'])
+            else:
+                url = self.url
+            r = requests.get(url,params=a)
+            if r.json == None or len(r.json) == 0:
+                print "Your query didn't return any matches."
+                print "Answer status code: %s"%(r.status_code)
+            else:
+                counter=0
+                for regex in r.json[0]['regexes']:
+                    table.add_row([counter,regex['type'],regex['field'],regex['regex']])
+                    counter+=1
+                print table
+                print "Answer status code: %s"%(r.status_code)
+
 
     def do_insert(self, args):
         pass
@@ -160,6 +231,8 @@ class Chains(cmd.Cmd):
     
     do_EOF = do_quit
     
+    do_list = do_get
+    
 class MologCli(cmd.Cmd):
     prompt = "(molog) "
     def __init__(self):
@@ -167,11 +240,19 @@ class MologCli(cmd.Cmd):
         self.url='http://localhost:8000/v1'
         
     def do_records(self, args):
+        '''
+        Allows you to query, display and delete records which matched one of the Chains.
+        '''
+        
         sub_cmd = Records(self.url)
         sub_cmd.cmdloop()
 
     def do_chains(self, args):
-        sub_cmd = Chains()
+        '''
+        Allows you to query, display and manipulate Chains.
+        '''
+        
+        sub_cmd = Chains(self.url)
         sub_cmd.cmdloop()
         
 def main():
