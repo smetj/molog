@@ -225,7 +225,6 @@ class Chains(ReturnCodes, MologTools):
         return self.code200(sr, result)
     
     def insertChains(self, sr, body, params, env):
-        print body
         self.db.insert(json.loads(body))
         return self.code200(sr,'')
     

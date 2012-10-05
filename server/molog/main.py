@@ -28,7 +28,7 @@ from logging import DEBUG, INFO
 
 def setup():
         wb = Wishbone()
-        wb.registerModule ( ('wishbone.io_modules.broker', 'Broker', 'broker'), host='sandbox', vhost='/', username='guest', password='guest', consume_queue='molog_input', no_ack=False )
+        wb.registerModule ( ('wishbone.io_modules.broker', 'Broker', 'broker'), host='besrvup-sss01', vhost='/', username='guest', password='guest', consume_queue='molog_test', no_ack=True )
         wb.registerModule ( ('wishbone.modules.jsonvalidator', 'JSONValidator', 'validateLogStashData'), schema='/etc/molog/broker.schema', convert=True )
         wb.registerModule ( ('molog', 'StoreES', 'store_es'), host='sandbox:9200' )
         wb.registerModule ( ('molog', 'Matches', 'matches'), host='sandbox', port=27017, warning=['3','4'], critical=['0','1','2'] )

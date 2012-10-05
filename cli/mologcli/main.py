@@ -182,7 +182,7 @@ class Chains(cmd.Cmd):
     def do_show(self, args):
         '''Shows the content of a chain.
         
-        -- id           The ID of the chain.
+        --id           The ID of the chain.
         --name          The name of the chain.
         '''
         
