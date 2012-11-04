@@ -60,7 +60,11 @@ class NagiosCheckResult(PrimitiveActor):
         if warning != '0':
             return ('1','Warning')
         
-            
+    def countMongo(self,host):
+        '''Counting the amount of objects we already have referenced.'''
+
+        return ( self.conn.molog.references.find({'hostname':host,'priority': { "$in":self.warning}}).count(), 
+        self.conn.molog.references.find({'hostname':host,'priority': { "$in":self.critical}}).count() )            
         
         
         

@@ -28,39 +28,43 @@ from wishbone.toolkit import PrimitiveActor
 from wishbone.tools.mongotools import MongoTools
 
 class Matches(PrimitiveActor,MongoTools):
-    '''Reads all defined regex chains from MongoDB and applies them to the received data to see if we have a match.
+    '''Reads all defined regex chains from MongoDB and tags documents according to them.
 
-    Unmatched records are dropped, matched records are written into MongoDB
-    
     Parameters:
     
         * name: the name of this module.
         * host: The hostname on which MongoDB is listening
         * port: The port on which MongoDB is listening.
-        * warning: The warning Map
-        * critical: The criticals Map
+        * database: The database containing the collection.
+        * collection: The collection containing the chains.
+        * prefix: The prefix of the fields added to processed documents.
     '''
     
     def __init__(self, name, *args, **kwargs):
         PrimitiveActor.__init__(self, name)
         self.host = kwargs.get('host','localhost')
         self.port = kwargs.get('port',27017)
-        self.warning = kwargs.get('warning',[])
-        self.critical = kwargs.get('critical',[])
+        self.database = kwargs.get('database','molog')
+        self.collection = kwargs.get('chains','chains')
+        self.prefix = kwargs.get('prefix','molog')
         self.setupConnection()
         
     def consume(self,doc):
+        
         '''For each message received, run through all defined chains and look for a match.'''
-        for chain in self.conn.molog.chains.find():
+        
+        for chain in self.conn[self.database][self.collection].find():
             if self.__checkMatch(chain, doc):
                 self.extendDocument(doc, chain['tags'], chain['name'])
-                doc['header']['name']=chain['name']
+                doc['header']['matches']=chain['name']
             else:
                 self.logging.debug ('%s - No match for %s' % (chain['name'],dumps(doc['data'])))
         self.sendData(doc)
     
     def __checkMatch(self, chain, doc):
+        
         '''For each regex in the chain, check wether it's intended for a root key or @fields.'''
+        
         for regex in chain['regexes']:
             if regex['field'].startswith('@') and doc['data'].has_key(regex['field']):
                 if self.__match(chain['name'],regex, doc['data'][regex['field']] ) == False:
@@ -79,7 +83,9 @@ class Matches(PrimitiveActor,MongoTools):
         return True                    
             
     def __match(self, name, regex, data):
+        
         '''Do some actual regex matching.'''
+        
         if regex['type'] == 'include':
             if match(regex['regex'], str(data)):
                 self.logging.debug ('%s - Include match using %s: %s' % (name, regex['regex'], data))
@@ -88,9 +94,12 @@ class Matches(PrimitiveActor,MongoTools):
             if not match(regex['regex'], str(data)):
                 self.logging.debug ('%s - Exclude match using %s: %s' % (name, regex['regex'], data))
                 return True
+        else:
+            self.logging.debug ('%s is not a valid regex type.' % (regex['type']))
         return False
 
     def extendDocument(self,doc, tags, name):
+        
         '''Extends a document with MoLog specific data.
         I initially planned to add a dictionary, but that would limit the query possibilities through Kibana.
         Kibana also doesn't seem to cope well with assigning True/False values, so I made this a string value instead.
@@ -100,15 +109,10 @@ class Matches(PrimitiveActor,MongoTools):
         
         That's why *HAVE* to use molog_ack and not @molog_ack
         '''
-        doc['data']['@molog_chain'] = name
-        doc['data']['@molog_tags'] = tags
-        doc['data']['@molog_ack'] = 'false'
-    
-    def countMongo(self,host):
-        '''Counting the amount of objects we already have referenced.'''
-
-        return ( self.conn.molog.references.find({'hostname':host,'priority': { "$in":self.warning}}).count(), 
-        self.conn.molog.references.find({'hostname':host,'priority': { "$in":self.critical}}).count() )
+        
+        doc['data']['@%s_chain'%self.prefix] = name
+        doc['data']['@%s_tags'%self.prefix] = tags
+        doc['data']['@%s_ack'%self.prefix] = 'false'
     
     def shutdown(self):
         try:
@@ -116,5 +120,3 @@ class Matches(PrimitiveActor,MongoTools):
         except:
             pass
         self.logging.info('Shutdown')
-
- 

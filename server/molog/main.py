@@ -28,10 +28,10 @@ from logging import DEBUG, INFO
 
 def setup():
         wb = Wishbone()
-        wb.registerModule ( ('wishbone.io_modules.broker', 'Broker', 'broker'), host='sandbox', vhost='/', username='guest', password='guest', consume_queue='logstash', no_ack=True )
+        wb.registerModule ( ('wishbone.io_modules.broker', 'Broker', 'broker'), host='sandbox', vhost='/', username='guest', password='guest', consume_queue='logstash', no_ack=False )
         wb.registerModule ( ('wishbone.modules.jsonvalidator', 'JSONValidator', 'validateLogStashData'), schema='/etc/molog/broker.schema', convert=True )
         wb.registerModule ( ('molog', 'StoreES', 'store_es'), host='sandbox:9200' )
-        wb.registerModule ( ('molog', 'Matches', 'matches'), host='sandbox', port=27017, warning=['3','4'], critical=['0','1','2'] )
+        wb.registerModule ( ('molog', 'Matches', 'matches'), host='sandbox', port=27017 )
         wb.registerModule ( ('molog', 'NagiosCheckResult', 'nagiosCheckResult'), warning=['3','4'], critical=['0','1','2'], exchange='', routing_key='nagios_check_results' )
 
         #Connecting the dots
@@ -44,7 +44,7 @@ def setup():
         wb.start()
         
 def main():        
-    server = ParallelServer(instances=5, setup=setup, daemonize=False, name='moncli', log_level=INFO)
+    server = ParallelServer(instances=1, setup=setup, daemonize=False, name='molog', log_level=INFO)
     server.start()
 
 if __name__ == '__main__':
