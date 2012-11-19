@@ -40,9 +40,9 @@ class StoreES(PrimitiveActor, ESTools):
     
     '''
     
-    def __init__(self, name, *args, **kwargs):
+    def __init__(self, name, host="localhost:9200"):
         PrimitiveActor.__init__(self, name)
-        self.host = kwargs.get('host','localhost:9200')
+        self.host = host
         self.setupConnection()
         
     def consume(self, doc):

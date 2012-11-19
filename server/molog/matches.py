@@ -40,13 +40,13 @@ class Matches(PrimitiveActor,MongoTools):
         * prefix: The prefix of the fields added to processed documents.
     '''
     
-    def __init__(self, name, *args, **kwargs):
+    def __init__(self, name, host='localhost', port=27017, database='molog', collection='chains', prefix='molog'):
         PrimitiveActor.__init__(self, name)
-        self.host = kwargs.get('host','localhost')
-        self.port = kwargs.get('port',27017)
-        self.database = kwargs.get('database','molog')
-        self.collection = kwargs.get('chains','chains')
-        self.prefix = kwargs.get('prefix','molog')
+        self.host = host
+        self.port = port
+        self.database = database
+        self.collection = collection
+        self.prefix = prefix
         self.setupConnection()
         
     def consume(self,doc):

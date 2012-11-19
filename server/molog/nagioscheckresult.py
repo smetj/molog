@@ -37,13 +37,13 @@ class NagiosCheckResult(PrimitiveActor):
         * critical: A list containing the syslog priorities for a Nagios critical.
     '''
     
-    def __init__(self, name, *args, **kwargs):
+    def __init__(self, name, exchange='',routing_key='',warning=['3','4'], critical=['0','1','2']):
         
         PrimitiveActor.__init__(self, name)
-        self.exchange = kwargs.get('exchange','')
-        self.routing_key = kwargs.get('routing_key','')
-        self.warning = kwargs.get('warning',['3','4'])
-        self.critical = kwargs.get('critical',['0','1','2'])
+        self.exchange = exchange
+        self.routing_key = routing_key
+        self.warning = warning
+        self.critical = critical
     
     def consume(self,doc):
         doc['header']['broker_exchange']=self.exchange
